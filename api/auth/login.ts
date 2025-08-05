@@ -1,6 +1,7 @@
 // Vercel Function for authentication
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import jwt from 'jsonwebtoken';
+import { createClient } from '@supabase/supabase-js';
 
 // Import our authentication logic
 // Note: We'll implement this as a simple function since we can't import from src/ in Vercel functions
@@ -35,7 +36,6 @@ export default async function handler(
       }
 
       // Use Supabase to authenticate (same pattern as ARCA)
-      const { createClient } = await import('@supabase/supabase-js');
       const supabaseUrl = process.env.SUPABASE_URL;
       const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
