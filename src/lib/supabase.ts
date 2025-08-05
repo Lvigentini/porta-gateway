@@ -3,13 +3,32 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase credentials not found - authentication will fail');
+// Validate URL format before attempting to create client
+function isValidUrl(urlString: string): boolean {
+  try {
+    new URL(urlString);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+let supabase: any = null;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn('Supabase credentials not found - authentication will fail');
+} else if (!isValidUrl(supabaseUrl)) {
+  console.error('Invalid Supabase URL format:', supabaseUrl);
+} else {
+  try {
+    supabase = createClient(supabaseUrl, supabaseAnonKey);
+  } catch (error) {
+    console.error('Failed to create Supabase client:', error);
+    supabase = null;
+  }
+}
+
+export { supabase };
 
 // Connection test utility
 export async function testSupabaseConnection(): Promise<{
