@@ -1,0 +1,66 @@
+// Vercel Function for health check
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Credentials': 'true'
+};
+
+export default async function handler(
+  req: VercelRequest,
+  res: VercelResponse
+) {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).json({});
+  }
+
+  // Set CORS headers
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+    res.setHeader(key, value);
+  });
+
+  try {
+    // Test Supabase connection
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+
+    let status = 'healthy';
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      status = 'unhealthy - supabase not configured';
+    } else {
+      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+      
+      const { error } = await supabase
+        .from('users')
+        .select('count', { count: 'exact' })
+        .limit(1);
+
+      if (error) {
+        status = 'unhealthy - database error';
+      }
+    }
+
+    return res.status(200).json({
+      status,
+      timestamp: new Date().toISOString(),
+      version: '1.0.0',
+      message: 'Porta Gateway (React + Vite)',
+      services: {
+        database: { status: status.includes('healthy') ? 'healthy' : 'unhealthy' },
+        authentication: { status: 'healthy', provider: 'Supabase' }
+      }
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      timestamp: new Date().toISOString(),
+      error: 'Health check failed'
+    });
+  }
+}
