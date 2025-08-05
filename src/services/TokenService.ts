@@ -1,7 +1,7 @@
 // Simple Token Service for Porta Gateway
 // Client-side utilities (token generation handled by Vercel functions)
 
-import { User, TokenPayload } from '../types/auth';
+import type { TokenPayload } from '../types/auth';
 
 export class TokenService {
   /**

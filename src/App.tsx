@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AuthService } from './services/AuthService';
-import { handleAuth, handleHealth } from './api/auth';
+import { handleAuth } from './api/auth';
 
 function App() {
   const [status, setStatus] = useState<string>('Loading...');

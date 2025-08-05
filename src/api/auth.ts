@@ -2,7 +2,7 @@
 // Simple REST-style endpoints using fetch
 
 import { AuthService } from '../services/AuthService';
-import { LoginCredentials } from '../types/auth';
+import type { LoginCredentials } from '../types/auth';
 
 // CORS headers for all responses
 const CORS_HEADERS = {

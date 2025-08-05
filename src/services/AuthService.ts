@@ -2,7 +2,7 @@
 // Simple client-side authentication using proven ARCA patterns
 
 import { supabase } from '../lib/supabase';
-import { LoginCredentials, AuthResult, User } from '../types/auth';
+import type { LoginCredentials, AuthResult, User } from '../types/auth';
 
 export class AuthService {
   
