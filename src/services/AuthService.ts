@@ -3,7 +3,6 @@
 
 import { supabase } from '../lib/supabase';
 import { LoginCredentials, AuthResult, User } from '../types/auth';
-import { TokenService } from './TokenService';
 
 export class AuthService {
   
@@ -49,22 +48,11 @@ export class AuthService {
         };
       }
 
-      // Generate JWT tokens for the requesting app
-      const token = TokenService.generateToken(user, credentials.app || 'unknown');
-      const refresh_token = TokenService.generateRefreshToken(user);
-
-      // Determine redirect URL
-      let redirect_url = credentials.redirect_url;
-      if (credentials.app === 'arca' && !redirect_url) {
-        redirect_url = 'https://arca-alpha.vercel.app';
-      }
-
+      // For client-side auth service, we just return user info
+      // Token generation happens in Vercel functions
       return {
         success: true,
-        user,
-        token,
-        refresh_token,
-        redirect_url
+        user
       };
 
     } catch (error) {
