@@ -1,5 +1,6 @@
 // Vercel Function for authentication
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import jwt from 'jsonwebtoken';
 
 // Import our authentication logic
 // Note: We'll implement this as a simple function since we can't import from src/ in Vercel functions
@@ -35,8 +36,8 @@ export default async function handler(
 
       // Use Supabase to authenticate (same pattern as ARCA)
       const { createClient } = await import('@supabase/supabase-js');
-      const supabaseUrl = process.env.VITE_SUPABASE_URL;
-      const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
       if (!supabaseUrl || !supabaseAnonKey) {
         return res.status(500).json({ error: 'Supabase not configured' });
@@ -66,8 +67,7 @@ export default async function handler(
       }
 
       // Generate simple JWT token
-      const jwt = await import('jsonwebtoken');
-      const jwtSecret = process.env.VITE_JWT_SECRET || 'dev-super-secret-key';
+      const jwtSecret = process.env.JWT_SECRET || 'dev-super-secret-key';
       
       const payload = {
         sub: userProfile.id,
