@@ -54,7 +54,8 @@ function App() {
         email: 'admin@arca.dev',
         password: 'admin123',
         app: 'arca',
-        redirect_url: 'https://arca-alpha.vercel.app'
+        redirect_url: 'https://arca-alpha.vercel.app',
+        app_secret: import.meta.env.VITE_ARCA_APP_SECRET
       };
       
       console.log('📤 Sending credentials:', credentials);
