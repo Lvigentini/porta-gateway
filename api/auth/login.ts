@@ -84,7 +84,6 @@ export default async function handler(
       const userProfile = profileData[0];
 
       // Generate simple JWT-like token (base64 encoded for simplicity)
-      const jwtSecret = process.env.VITE_CLIENT_JWT_SECRET || 'dev-super-secret-key';
       
       const payload = {
         sub: userProfile.id,
