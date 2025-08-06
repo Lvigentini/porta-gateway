@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/api/auth.ts","./src/constants/version.ts","./src/lib/supabase.ts","./src/services/authservice.ts","./src/services/tokenservice.ts","./src/types/auth.ts","./api/health.ts","./api/test-simple.ts","./api/test.ts","./api/auth/login.ts"],"version":"5.8.3"}

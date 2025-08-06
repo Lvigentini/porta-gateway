@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.53.0",
-    "@vercel/node": "^5.3.11",
+    "@vercel/node": "^2.3.0",
     "jsonwebtoken": "^9.0.2",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
