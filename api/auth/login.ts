@@ -13,6 +13,116 @@ function recordAuthAttempt(success: boolean, responseTime: number, error?: strin
   console.log('[Auth] Authentication attempt:', logEntry);
 }
 
+// Inline app validation function with centralized + backward compatibility support
+async function validateAppCredentials(
+  appName: string, 
+  providedSecret: string
+): Promise<{ isValid: boolean; app?: any; error?: string; source?: string }> {
+  if (!appName || !providedSecret) {
+    return { isValid: false, error: 'App name and secret are required' };
+  }
+
+  try {
+    console.log('[Auth] Validating app credentials for:', appName);
+    
+    // Try database first (new centralized approach)
+    const dbResult = await validateFromDatabase(appName, providedSecret);
+    if (dbResult.isValid) {
+      return dbResult;
+    }
+
+    // Fallback to environment variables (backward compatibility)
+    const envResult = await validateFromEnvironment(appName, providedSecret);
+    if (envResult.isValid) {
+      return envResult;
+    }
+
+    return { isValid: false, error: 'Invalid app credentials' };
+
+  } catch (error) {
+    console.error('[Auth] App validation error:', error);
+    return { isValid: false, error: 'App validation failed' };
+  }
+}
+
+async function validateFromDatabase(appName: string, providedSecret: string) {
+  try {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return { isValid: false, error: 'Supabase not configured' };
+    }
+
+    const response = await fetch(`${supabaseUrl}/rest/v1/registered_apps?app_name=eq.${appName}&status=eq.active`, {
+      method: 'GET',
+      headers: {
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`
+      }
+    });
+
+    if (!response.ok) {
+      return { isValid: false, error: 'Database query failed' };
+    }
+
+    const data = await response.json();
+    if (!data || data.length === 0) {
+      return { isValid: false, error: 'App not found in database' };
+    }
+
+    const app = data[0];
+    
+    // Check secret match
+    if (app.app_secret !== providedSecret) {
+      return { isValid: false, error: 'Invalid app secret' };
+    }
+
+    // Check secret expiry
+    if (app.secret_expires_at) {
+      const expiryDate = new Date(app.secret_expires_at);
+      if (expiryDate < new Date()) {
+        return { isValid: false, error: 'App secret expired' };
+      }
+    }
+
+    console.log('[Auth] App validation successful (database):', appName);
+    return { isValid: true, app, source: 'database' };
+
+  } catch (error) {
+    return { isValid: false, error: 'Database validation failed' };
+  }
+}
+
+async function validateFromEnvironment(appName: string, providedSecret: string) {
+  try {
+    // Support legacy ARCA app secret from environment
+    if (appName === 'arca') {
+      const arcaSecret = process.env.VITE_ARCA_APP_SECRET;
+      if (arcaSecret && arcaSecret === providedSecret) {
+        console.log('[Auth] App validation successful (environment fallback):', appName);
+        
+        const mockApp = {
+          id: 'env-arca',
+          app_name: 'arca',
+          app_display_name: 'ARCA Analytics (Environment)',
+          allowed_origins: ['https://arca-alpha.vercel.app'],
+          redirect_urls: ['https://arca-alpha.vercel.app'],
+          status: 'active',
+          metadata: { source: 'environment' }
+        };
+
+        return { isValid: true, app: mockApp, source: 'environment' };
+      }
+    }
+
+    return { isValid: false, error: 'App not found in environment' };
+
+  } catch (error) {
+    return { isValid: false, error: 'Environment validation failed' };
+  }
+}
+
 // Server-side authentication using Supabase REST API
 
 export default async function handler(
@@ -22,7 +132,7 @@ export default async function handler(
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Request-ID, x-porta-version, x-arca-app-secret');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Request-ID, x-porta-version, x-arca-app-secret, x-app-secret');
   res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
   res.setHeader('Access-Control-Allow-Credentials', 'false');
 
@@ -42,15 +152,22 @@ export default async function handler(
         return res.status(400).json({ error: 'Email and password are required' });
       }
 
-      // Validate ARCA app requests
-      if (app === 'arca') {
-        const arcaAppSecret = process.env.VITE_ARCA_APP_SECRET;
-        const providedSecret = req.headers['x-arca-app-secret'] || req.body.app_secret;
+      // Validate app credentials (centralized with backward compatibility)
+      if (app) {
+        const providedSecret = req.headers['x-arca-app-secret'] || req.headers['x-app-secret'] || req.body.app_secret;
         
-        if (!arcaAppSecret || providedSecret !== arcaAppSecret) {
-          recordAuthAttempt(false, Date.now() - startTime, 'Invalid app credentials');
-          return res.status(401).json({ error: 'Invalid app credentials' });
+        if (!providedSecret) {
+          recordAuthAttempt(false, Date.now() - startTime, 'Missing app secret');
+          return res.status(400).json({ error: 'App secret is required' });
         }
+
+        const appValidation = await validateAppCredentials(app, providedSecret);
+        if (!appValidation.isValid) {
+          recordAuthAttempt(false, Date.now() - startTime, `App validation failed: ${appValidation.error}`);
+          return res.status(401).json({ error: appValidation.error || 'Invalid app credentials' });
+        }
+
+        console.log(`[Auth] App validation successful for ${app} (source: ${appValidation.source})`);
       }
 
       // Use Supabase REST API for server-side authentication (like curl test)

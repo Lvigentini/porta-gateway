@@ -1,0 +1,393 @@
+// App Registration Management API
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+// Inline AppRegistrationService functionality to avoid import issues
+interface RegisteredApp {
+  id: string;
+  app_name: string;
+  app_display_name: string;
+  app_secret: string;
+  allowed_origins: string[];
+  redirect_urls: string[];
+  status: 'active' | 'disabled' | 'pending';
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+  secret_expires_at?: string;
+  permissions: Record<string, any>;
+  metadata: Record<string, any>;
+}
+
+interface AppRegistrationRequest {
+  app_name: string;
+  app_display_name: string;
+  allowed_origins: string[];
+  redirect_urls: string[];
+  permissions?: Record<string, any>;
+  metadata?: Record<string, any>;
+}
+
+// Inline Supabase client setup
+function createSupabaseClient() {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Supabase configuration missing');
+  }
+  
+  return { supabaseUrl, supabaseAnonKey };
+}
+
+// Generate secure app secret
+function generateAppSecret(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < 64; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+// Get secret expiry date (90 days)
+function getSecretExpiryDate(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 90);
+  return date.toISOString();
+}
+
+// Validate admin access (simplified for now)
+function validateAdminAccess(req: VercelRequest): { isValid: boolean; error?: string } {
+  // TODO: Implement proper admin token validation
+  // For now, check for emergency access or admin token in header
+  const authHeader = req.headers.authorization;
+  const emergencyToken = req.headers['x-emergency-token'];
+  
+  if (!authHeader && !emergencyToken) {
+    return { isValid: false, error: 'Admin access required' };
+  }
+  
+  return { isValid: true };
+}
+
+export default async function handler(
+  req: VercelRequest,
+  res: VercelResponse
+) {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Request-ID, X-Emergency-Token');
+  res.setHeader('Access-Control-Max-Age', '86400');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  // Validate admin access
+  const adminValidation = validateAdminAccess(req);
+  if (!adminValidation.isValid) {
+    return res.status(401).json({ 
+      success: false, 
+      error: adminValidation.error || 'Unauthorized' 
+    });
+  }
+
+  try {
+    const { supabaseUrl, supabaseAnonKey } = createSupabaseClient();
+
+    if (req.method === 'GET') {
+      // Get all registered apps
+      return await handleGetApps(res, supabaseUrl, supabaseAnonKey);
+    }
+
+    if (req.method === 'POST') {
+      // Register new app
+      return await handleCreateApp(req, res, supabaseUrl, supabaseAnonKey);
+    }
+
+    if (req.method === 'PUT') {
+      // Update existing app
+      return await handleUpdateApp(req, res, supabaseUrl, supabaseAnonKey);
+    }
+
+    if (req.method === 'DELETE') {
+      // Disable app (soft delete)
+      return await handleDeleteApp(req, res, supabaseUrl, supabaseAnonKey);
+    }
+
+    return res.status(405).json({ 
+      success: false, 
+      error: 'Method not allowed' 
+    });
+
+  } catch (error) {
+    console.error('[Apps API] Error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error' 
+    });
+  }
+}
+
+async function handleGetApps(
+  res: VercelResponse,
+  supabaseUrl: string,
+  supabaseAnonKey: string
+) {
+  try {
+    
+    const response = await fetch(`${supabaseUrl}/rest/v1/registered_apps?status=eq.active&order=created_at.desc`, {
+      method: 'GET',
+      headers: {
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Supabase error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    // Remove secrets from response
+    const appsWithoutSecrets = data.map((app: RegisteredApp) => ({
+      ...app,
+      app_secret: '[HIDDEN]'
+    }));
+
+    return res.status(200).json({
+      success: true,
+      apps: appsWithoutSecrets,
+      count: appsWithoutSecrets.length
+    });
+
+  } catch (error) {
+    console.error('[Apps API] Get apps error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to fetch apps'
+    });
+  }
+}
+
+async function handleCreateApp(
+  req: VercelRequest,
+  res: VercelResponse,
+  supabaseUrl: string,
+  supabaseAnonKey: string
+) {
+  try {
+    const { app_name, app_display_name, allowed_origins, redirect_urls, permissions, metadata } = req.body as AppRegistrationRequest;
+
+    // Validate required fields
+    if (!app_name || !app_display_name || !allowed_origins || !redirect_urls) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: app_name, app_display_name, allowed_origins, redirect_urls'
+      });
+    }
+
+    // Validate app_name format
+    if (!/^[a-z0-9_-]+$/.test(app_name)) {
+      return res.status(400).json({
+        success: false,
+        error: 'app_name must contain only lowercase letters, numbers, underscores, and hyphens'
+      });
+    }
+
+    // Generate app secret
+    const appSecret = generateAppSecret();
+    const secretExpiryDate = getSecretExpiryDate();
+
+    const appData = {
+      app_name,
+      app_display_name,
+      app_secret: appSecret,
+      allowed_origins,
+      redirect_urls,
+      status: 'active',
+      permissions: permissions || {},
+      metadata: metadata || {},
+      secret_expires_at: secretExpiryDate,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const response = await fetch(`${supabaseUrl}/rest/v1/registered_apps`, {
+      method: 'POST',
+      headers: {
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(appData)
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Supabase error: ${response.status} - ${error}`);
+    }
+
+    const data = await response.json();
+    const createdApp = Array.isArray(data) ? data[0] : data;
+
+    console.log('[Apps API] App registered successfully:', app_name);
+
+    return res.status(201).json({
+      success: true,
+      app: createdApp,
+      message: `App '${app_name}' registered successfully`
+    });
+
+  } catch (error) {
+    console.error('[Apps API] Create app error:', error);
+    
+    // Check for unique constraint violation
+    if (error instanceof Error && error.message.includes('duplicate key')) {
+      return res.status(409).json({
+        success: false,
+        error: 'App name already exists'
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to register app'
+    });
+  }
+}
+
+async function handleUpdateApp(
+  req: VercelRequest,
+  res: VercelResponse,
+  supabaseUrl: string,
+  supabaseAnonKey: string
+) {
+  try {
+    const { app_name } = req.query;
+    const updates = req.body;
+
+    if (!app_name || typeof app_name !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'app_name is required in query parameters'
+      });
+    }
+
+    // Remove fields that shouldn't be updated via this endpoint
+    delete updates.app_secret; // Use separate rotation endpoint
+    delete updates.created_at;
+    delete updates.id;
+    
+    const updateData = {
+      ...updates,
+      updated_at: new Date().toISOString()
+    };
+
+    const response = await fetch(`${supabaseUrl}/rest/v1/registered_apps?app_name=eq.${app_name}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(updateData)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Supabase error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const updatedApp = Array.isArray(data) ? data[0] : data;
+
+    if (!updatedApp) {
+      return res.status(404).json({
+        success: false,
+        error: 'App not found'
+      });
+    }
+
+    // Remove secret from response
+    updatedApp.app_secret = '[HIDDEN]';
+
+    return res.status(200).json({
+      success: true,
+      app: updatedApp,
+      message: `App '${app_name}' updated successfully`
+    });
+
+  } catch (error) {
+    console.error('[Apps API] Update app error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to update app'
+    });
+  }
+}
+
+async function handleDeleteApp(
+  req: VercelRequest,
+  res: VercelResponse,
+  supabaseUrl: string,
+  supabaseAnonKey: string
+) {
+  try {
+    const { app_name } = req.query;
+
+    if (!app_name || typeof app_name !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'app_name is required in query parameters'
+      });
+    }
+
+    // Soft delete by setting status to disabled
+    const updateData = {
+      status: 'disabled',
+      updated_at: new Date().toISOString()
+    };
+
+    const response = await fetch(`${supabaseUrl}/rest/v1/registered_apps?app_name=eq.${app_name}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(updateData)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Supabase error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const disabledApp = Array.isArray(data) ? data[0] : data;
+
+    if (!disabledApp) {
+      return res.status(404).json({
+        success: false,
+        error: 'App not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `App '${app_name}' has been disabled`
+    });
+
+  } catch (error) {
+    console.error('[Apps API] Delete app error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to disable app'
+    });
+  }
+}
