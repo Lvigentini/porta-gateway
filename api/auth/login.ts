@@ -1,17 +1,8 @@
 // Vercel Function for authentication
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import jwt from 'jsonwebtoken';
-import { createClient } from '@supabase/supabase-js';
 
-// Import our authentication logic
-// Note: We'll implement this as a simple function since we can't import from src/ in Vercel functions
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Allow-Credentials': 'true'
-};
+// Server-side authentication using Supabase REST API
 
 export default async function handler(
   req: VercelRequest,
@@ -45,7 +36,7 @@ export default async function handler(
         }
       }
 
-      // Use Supabase to authenticate (same pattern as ARCA)
+      // Use Supabase REST API for server-side authentication (like curl test)
       const supabaseUrl = process.env.VITE_CLIENT_SUPABASE_URL;
       const supabaseAnonKey = process.env.VITE_CLIENT_SUPABASE_ANON_KEY;
 
@@ -53,28 +44,45 @@ export default async function handler(
         return res.status(500).json({ error: 'Supabase not configured' });
       }
 
-      const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-      // Authenticate user
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      // Step 1: Authenticate with Supabase REST API
+      const authResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseAnonKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
       });
 
-      if (error || !data.user) {
+      if (!authResponse.ok) {
         return res.status(401).json({ error: 'Invalid login credentials' });
       }
 
-      // Fetch user profile
-      const { data: userProfile, error: profileError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
+      const authResult = await authResponse.json();
+      
+      if (!authResult.access_token || !authResult.user) {
+        return res.status(401).json({ error: 'Authentication failed' });
+      }
 
-      if (profileError || !userProfile) {
+      // Step 2: Fetch user profile using the access token
+      const profileResponse = await fetch(`${supabaseUrl}/rest/v1/users?id=eq.${authResult.user.id}`, {
+        headers: {
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${authResult.access_token}`
+        }
+      });
+
+      if (!profileResponse.ok) {
+        return res.status(401).json({ error: 'Failed to fetch user profile' });
+      }
+
+      const profileData = await profileResponse.json();
+      
+      if (!Array.isArray(profileData) || profileData.length === 0) {
         return res.status(401).json({ error: 'User profile not found' });
       }
+
+      const userProfile = profileData[0];
 
       // Generate simple JWT token
       const jwtSecret = process.env.VITE_CLIENT_JWT_SECRET || 'dev-super-secret-key';
