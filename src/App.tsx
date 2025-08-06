@@ -1,12 +1,21 @@
 import { useState, useEffect } from 'react';
 import { AuthService } from './services/AuthService';
 import { handleAuth } from './api/auth';
+import { APP_VERSION, BUILD_DATE } from './constants/version';
 
 function App() {
   const [status, setStatus] = useState<string>('Loading...');
   const [lastTest, setLastTest] = useState<string>('');
 
   useEffect(() => {
+    // Debug environment variables
+    console.log('🔧 Environment check:', {
+      hasSupabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
+      hasSupabaseKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+      isDev: import.meta.env.DEV
+    });
+    
     checkHealth();
     
     // Set up API route handlers for development
@@ -15,11 +24,14 @@ function App() {
 
   const checkHealth = async () => {
     try {
+      console.log('🏥 checkHealth: Starting health check...');
       const health = await AuthService.getHealth();
+      console.log('🏥 checkHealth: Health result:', health);
       setStatus(health.status);
       setLastTest(health.timestamp);
     } catch (error) {
-      setStatus('Error checking health');
+      console.error('🏥 checkHealth: Error:', error);
+      setStatus('Error checking health: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -232,9 +244,16 @@ function App() {
       maxWidth: '800px', 
       margin: '0 auto' 
     }}>
-      <h1 style={{ color: '#2563eb', marginBottom: '2rem' }}>
-        🚪 Porta Gateway
-      </h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <h1 style={{ color: '#2563eb', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <img src="/apple-touch-icon.svg" alt="Porta Gateway" style={{ width: '32px', height: '32px' }} />
+          Porta Gateway
+        </h1>
+        <div style={{ textAlign: 'right', fontSize: '0.9rem', color: '#6b7280' }}>
+          <div><strong>v{APP_VERSION}</strong></div>
+          <div>Build: {BUILD_DATE}</div>
+        </div>
+      </div>
       
       <div style={{ 
         background: '#f8fafc', 
@@ -243,96 +262,126 @@ function App() {
         padding: '1.5rem',
         marginBottom: '2rem'
       }}>
-        <h2>System Status</h2>
-        <p><strong>Status:</strong> <span style={{ 
-          color: status.includes('healthy') ? '#16a34a' : '#dc2626' 
-        }}>{status}</span></p>
-        <p><strong>Last Check:</strong> {lastTest}</p>
+        <h2 style={{ marginTop: 0 }}>System Status & Testing</h2>
         
-        <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <button 
-            onClick={checkHealth}
-            style={{
-              background: '#3b82f6',
-              color: 'white',
-              border: 'none',
-              padding: '0.5rem 1rem',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            🔄 Refresh Status
-          </button>
-          
-          <button 
-            onClick={testLogin}
-            style={{
-              background: '#16a34a',
-              color: 'white',
-              border: 'none',
-              padding: '0.5rem 1rem',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            🔑 Test Login
-          </button>
+        <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
+          {/* Status Information */}
+          <div style={{ flex: 1 }}>
+            <h3 style={{ marginTop: 0, fontSize: '1.1rem', color: '#374151' }}>Current Status</h3>
+            <p><strong>Status:</strong> <span style={{ 
+              color: status.includes('healthy') ? '#16a34a' : '#dc2626',
+              fontWeight: 'bold'
+            }}>{status}</span></p>
+            <p><strong>Last Check:</strong> {lastTest}</p>
+            <p><strong>Environment:</strong> {import.meta.env.DEV ? 'Development' : 'Production'}</p>
+          </div>
 
-          <button 
-            onClick={testLogout}
-            style={{
-              background: '#ef4444',
-              color: 'white',
-              border: 'none',
-              padding: '0.5rem 1rem',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            🚪 Test Logout
-          </button>
+          {/* Test Buttons */}
+          <div style={{ flex: 2 }}>
+            <h3 style={{ marginTop: 0, fontSize: '1.1rem', color: '#374151' }}>Test Functions</h3>
+            
+            {/* Primary Actions */}
+            <div style={{ marginBottom: '1rem' }}>
+              <h4 style={{ fontSize: '0.9rem', color: '#6b7280', margin: '0 0 0.5rem 0' }}>Authentication</h4>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+                <button 
+                  onClick={testLogin}
+                  style={{
+                    background: '#16a34a',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  🔑 Test Login
+                </button>
 
-          <button 
-            onClick={testSupabaseDirect}
-            style={{
-              background: '#dc2626',
-              color: 'white',
-              border: 'none',
-              padding: '0.5rem 1rem',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            🔬 Supabase Direct
-          </button>
+                <button 
+                  onClick={testLogout}
+                  style={{
+                    background: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  🚪 Test Logout
+                </button>
 
-          <button 
-            onClick={testProductionHealth}
-            style={{
-              background: '#7c3aed',
-              color: 'white',
-              border: 'none',
-              padding: '0.5rem 1rem',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            🏥 Prod Health
-          </button>
+                <button 
+                  onClick={checkHealth}
+                  style={{
+                    background: '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  🔄 Refresh Status
+                </button>
+              </div>
+            </div>
 
-          <button 
-            onClick={testSimpleEndpoint}
-            style={{
-              background: '#f59e0b',
-              color: 'white',
-              border: 'none',
-              padding: '0.5rem 1rem',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            🧪 Simple API
-          </button>
+            {/* Debug/Advanced */}
+            <div>
+              <h4 style={{ fontSize: '0.9rem', color: '#6b7280', margin: '0 0 0.5rem 0' }}>Debug & Advanced</h4>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <button 
+                  onClick={testSupabaseDirect}
+                  style={{
+                    background: '#dc2626',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  🔬 Supabase Direct
+                </button>
+
+                <button 
+                  onClick={testProductionHealth}
+                  style={{
+                    background: '#7c3aed',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  🏥 Prod Health
+                </button>
+
+                <button 
+                  onClick={testSimpleEndpoint}
+                  style={{
+                    background: '#f59e0b',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  🧪 Simple API
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

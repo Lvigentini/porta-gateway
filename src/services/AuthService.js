@@ -202,31 +202,46 @@ export class AuthService {
         }
     }
     /**
-     * Logout current user
+     * Logout current user - Manual state management, no listeners
      */
     static async logout() {
-        if (!supabase) {
-            this.setCurrentUser(null);
-            return { success: true };
-        }
+        console.log('🚪 logout: Starting logout process...');
         try {
             const currentUser = this.getCurrentUser();
-            const { error } = await supabase.auth.signOut();
-            if (error) {
-                return { success: false, error: error.message };
-            }
-            // Log logout activity
-            if (currentUser) {
-                await this.logActivity(currentUser.id, 'user_logout', 'user', currentUser.id);
-            }
+            console.log('🚪 logout: Current user:', currentUser?.email || 'none');
+            // Step 1: Clear local state immediately
             this.setCurrentUser(null);
+            console.log('🚪 logout: Cleared local user state');
+            // Step 2: Sign out from Supabase (if available)
+            if (supabase) {
+                console.log('🚪 logout: Calling supabase.auth.signOut...');
+                const { error } = await supabase.auth.signOut();
+                if (error) {
+                    console.error('🚪 logout: Supabase signOut error:', error);
+                    // Even if Supabase logout fails, local state is cleared
+                    return { success: true, error: `Logged out locally, but Supabase error: ${error.message}` };
+                }
+                console.log('🚪 logout: Supabase signOut successful');
+            }
+            // Step 3: Log activity (optional, don't let it fail the logout)
+            if (currentUser && supabase) {
+                try {
+                    await this.logActivity(currentUser.id, 'user_logout', 'user', currentUser.id);
+                }
+                catch (logError) {
+                    console.warn('🚪 logout: Failed to log activity, but logout succeeded');
+                }
+            }
+            console.log('🚪 logout: Logout completed successfully');
             return { success: true };
         }
         catch (error) {
-            console.error('Logout error:', error);
+            console.error('🚪 logout: Critical error:', error);
+            // Even if there's an error, ensure local state is cleared
+            this.setCurrentUser(null);
             return {
-                success: false,
-                error: error instanceof Error ? error.message : 'Logout failed'
+                success: true, // We consider it successful if local state is cleared
+                error: `Logged out locally, but error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`
             };
         }
     }
@@ -388,6 +403,10 @@ export class AuthService {
         };
     }
     // Private helper methods
+    // Public methods for auth state listener to avoid infinite loop
+    static clearCurrentUser() {
+        this.setCurrentUser(null);
+    }
     static setCurrentUser(user) {
         this.currentUser = user;
         this.authListeners.forEach(listener => listener(user));
@@ -546,15 +565,5 @@ export class AuthService {
         }
     }
 }
-// Set up auth state listener
-if (supabase) {
-    supabase.auth.onAuthStateChange((event, session) => {
-        console.log('Supabase auth state change:', event, session);
-        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-            AuthService.initialize(); // Re-initialize to fetch full profile
-        }
-        else if (event === 'SIGNED_OUT') {
-            AuthService.logout(); // Clear current user
-        }
-    });
-}
+// NO AUTH STATE LISTENER - Manual state management only
+// This prevents infinite loops by only updating state when user takes explicit action

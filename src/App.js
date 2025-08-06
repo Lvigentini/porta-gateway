@@ -2,22 +2,33 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useState, useEffect } from 'react';
 import { AuthService } from './services/AuthService';
 import { handleAuth } from './api/auth';
+import { APP_VERSION, BUILD_DATE } from './constants/version';
 function App() {
     const [status, setStatus] = useState('Loading...');
     const [lastTest, setLastTest] = useState('');
     useEffect(() => {
+        // Debug environment variables
+        console.log('🔧 Environment check:', {
+            hasSupabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
+            hasSupabaseKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
+            supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+            isDev: import.meta.env.DEV
+        });
         checkHealth();
         // Set up API route handlers for development
         setupAPIRoutes();
     }, []);
     const checkHealth = async () => {
         try {
+            console.log('🏥 checkHealth: Starting health check...');
             const health = await AuthService.getHealth();
+            console.log('🏥 checkHealth: Health result:', health);
             setStatus(health.status);
             setLastTest(health.timestamp);
         }
         catch (error) {
-            setStatus('Error checking health');
+            console.error('🏥 checkHealth: Error:', error);
+            setStatus('Error checking health: ' + (error instanceof Error ? error.message : 'Unknown error'));
         }
     };
     const setupAPIRoutes = () => {
@@ -83,6 +94,26 @@ function App() {
             console.error('💥 Test login error:', error);
             console.error('💥 Error stack:', error instanceof Error ? error.stack : 'No stack');
             alert('Test error: ' + error);
+        }
+    };
+    const testLogout = async () => {
+        try {
+            console.log('🚪 Starting test logout...');
+            const result = await AuthService.logout();
+            if (result.success) {
+                console.log('✅ Logout successful!');
+                alert('Test logout successful!');
+                // Refresh the status after logout
+                await checkHealth();
+            }
+            else {
+                console.log('❌ Logout failed:', result.error);
+                alert('Test logout failed: ' + (result.error || 'Unknown error'));
+            }
+        }
+        catch (error) {
+            console.error('💥 Test logout error:', error);
+            alert('Test logout error: ' + error);
         }
     };
     const testSupabaseDirect = async () => {
@@ -186,54 +217,64 @@ function App() {
             fontFamily: 'system-ui',
             maxWidth: '800px',
             margin: '0 auto'
-        }, children: [_jsx("h1", { style: { color: '#2563eb', marginBottom: '2rem' }, children: "\uD83D\uDEAA Porta Gateway" }), _jsxs("div", { style: {
+        }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }, children: [_jsx("h1", { style: { color: '#2563eb', margin: 0 }, children: "\uD83D\uDEAA Porta Gateway" }), _jsxs("div", { style: { textAlign: 'right', fontSize: '0.9rem', color: '#6b7280' }, children: [_jsx("div", { children: _jsxs("strong", { children: ["v", APP_VERSION] }) }), _jsxs("div", { children: ["Build: ", BUILD_DATE] })] })] }), _jsxs("div", { style: {
                     background: '#f8fafc',
                     border: '1px solid #e2e8f0',
                     borderRadius: '8px',
                     padding: '1.5rem',
                     marginBottom: '2rem'
-                }, children: [_jsx("h2", { children: "System Status" }), _jsxs("p", { children: [_jsx("strong", { children: "Status:" }), " ", _jsx("span", { style: {
-                                    color: status.includes('healthy') ? '#16a34a' : '#dc2626'
-                                }, children: status })] }), _jsxs("p", { children: [_jsx("strong", { children: "Last Check:" }), " ", lastTest] }), _jsxs("div", { style: { marginTop: '1rem' }, children: [_jsx("button", { onClick: checkHealth, style: {
-                                    background: '#3b82f6',
-                                    color: 'white',
-                                    border: 'none',
-                                    padding: '0.5rem 1rem',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    marginRight: '1rem'
-                                }, children: "Refresh Status" }), _jsx("button", { onClick: testLogin, style: {
-                                    background: '#16a34a',
-                                    color: 'white',
-                                    border: 'none',
-                                    padding: '0.5rem 1rem',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    marginRight: '1rem'
-                                }, children: "Test Login (Client)" }), _jsx("button", { onClick: testSupabaseDirect, style: {
-                                    background: '#dc2626',
-                                    color: 'white',
-                                    border: 'none',
-                                    padding: '0.5rem 1rem',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer'
-                                }, children: "Test Supabase Direct" }), _jsx("button", { onClick: testProductionHealth, style: {
-                                    background: '#7c3aed',
-                                    color: 'white',
-                                    border: 'none',
-                                    padding: '0.5rem 1rem',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    marginLeft: '1rem'
-                                }, children: "Test Prod Health" }), _jsx("button", { onClick: testSimpleEndpoint, style: {
-                                    background: '#f59e0b',
-                                    color: 'white',
-                                    border: 'none',
-                                    padding: '0.5rem 1rem',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    marginLeft: '1rem'
-                                }, children: "Test Simple API" })] })] }), _jsxs("div", { style: {
+                }, children: [_jsx("h2", { style: { marginTop: 0 }, children: "System Status & Testing" }), _jsxs("div", { style: { display: 'flex', gap: '2rem', alignItems: 'flex-start' }, children: [_jsxs("div", { style: { flex: 1 }, children: [_jsx("h3", { style: { marginTop: 0, fontSize: '1.1rem', color: '#374151' }, children: "Current Status" }), _jsxs("p", { children: [_jsx("strong", { children: "Status:" }), " ", _jsx("span", { style: {
+                                                    color: status.includes('healthy') ? '#16a34a' : '#dc2626',
+                                                    fontWeight: 'bold'
+                                                }, children: status })] }), _jsxs("p", { children: [_jsx("strong", { children: "Last Check:" }), " ", lastTest] }), _jsxs("p", { children: [_jsx("strong", { children: "Environment:" }), " ", import.meta.env.DEV ? 'Development' : 'Production'] })] }), _jsxs("div", { style: { flex: 2 }, children: [_jsx("h3", { style: { marginTop: 0, fontSize: '1.1rem', color: '#374151' }, children: "Test Functions" }), _jsxs("div", { style: { marginBottom: '1rem' }, children: [_jsx("h4", { style: { fontSize: '0.9rem', color: '#6b7280', margin: '0 0 0.5rem 0' }, children: "Authentication" }), _jsxs("div", { style: { display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }, children: [_jsx("button", { onClick: testLogin, style: {
+                                                            background: '#16a34a',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '0.5rem 1rem',
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.9rem'
+                                                        }, children: "\uD83D\uDD11 Test Login" }), _jsx("button", { onClick: testLogout, style: {
+                                                            background: '#ef4444',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '0.5rem 1rem',
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.9rem'
+                                                        }, children: "\uD83D\uDEAA Test Logout" }), _jsx("button", { onClick: checkHealth, style: {
+                                                            background: '#3b82f6',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '0.5rem 1rem',
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.9rem'
+                                                        }, children: "\uD83D\uDD04 Refresh Status" })] })] }), _jsxs("div", { children: [_jsx("h4", { style: { fontSize: '0.9rem', color: '#6b7280', margin: '0 0 0.5rem 0' }, children: "Debug & Advanced" }), _jsxs("div", { style: { display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }, children: [_jsx("button", { onClick: testSupabaseDirect, style: {
+                                                            background: '#dc2626',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '0.5rem 1rem',
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.9rem'
+                                                        }, children: "\uD83D\uDD2C Supabase Direct" }), _jsx("button", { onClick: testProductionHealth, style: {
+                                                            background: '#7c3aed',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '0.5rem 1rem',
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.9rem'
+                                                        }, children: "\uD83C\uDFE5 Prod Health" }), _jsx("button", { onClick: testSimpleEndpoint, style: {
+                                                            background: '#f59e0b',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '0.5rem 1rem',
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.9rem'
+                                                        }, children: "\uD83E\uDDEA Simple API" })] })] })] })] })] }), _jsxs("div", { style: {
                     background: '#fefce8',
                     border: '1px solid #eab308',
                     borderRadius: '8px',

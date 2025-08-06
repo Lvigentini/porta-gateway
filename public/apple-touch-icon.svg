@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <defs>
+    <linearGradient id="doorGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B4513;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#A0522D;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#654321;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="metalGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#696969;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#808080;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2F4F4F;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="stoneGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#696969;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#4A4A4A;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#333333;stop-opacity:1" />
+    </linearGradient>
+    <radialGradient id="bgGradient" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" style="stop-color:#2a2a2a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1a1a1a;stop-opacity:1" />
+    </radialGradient>
+  </defs>
+  
+  <!-- Rounded background for iOS -->
+  <rect width="180" height="180" rx="40" ry="40" fill="url(#bgGradient)"/>
+  
+  <!-- Gothic arch door frame (stone) -->
+  <path d="M 35 165 L 35 80 Q 35 35 90 35 Q 145 35 145 80 L 145 165 Z" 
+        fill="url(#stoneGradient)" stroke="#666" stroke-width="2"/>
+  
+  <!-- Inner arch shadow -->
+  <path d="M 42 158 L 42 82 Q 42 45 90 45 Q 138 45 138 82 L 138 158 Z" 
+        fill="#2a2a2a" stroke="#555" stroke-width="1"/>
+  
+  <!-- Door panels -->
+  <path d="M 45 155 L 45 85 Q 45 50 90 50 Q 135 50 135 85 L 135 155 Z" 
+        fill="url(#doorGradient)" stroke="#654321" stroke-width="1"/>
+  
+  <!-- Gothic arch details -->
+  <path d="M 55 145 L 55 90 Q 55 65 90 65 Q 125 65 125 90 L 125 145" 
+        fill="none" stroke="#8B4513" stroke-width="2" opacity="0.7"/>
+  
+  <!-- Door panels vertical division -->
+  <line x1="90" y1="55" x2="90" y2="155" stroke="#654321" stroke-width="3"/>
+  
+  <!-- Door handles -->
+  <circle cx="70" cy="115" r="5" fill="url(#metalGradient)" stroke="#555" stroke-width="1"/>
+  <circle cx="110" cy="115" r="5" fill="url(#metalGradient)" stroke="#555" stroke-width="1"/>
+  
+  <!-- Gothic decorative elements -->
+  <path d="M 90 70 L 80 85 L 100 85 Z" fill="#A0522D" opacity="0.8"/>
+  <rect x="85" y="85" width="10" height="40" fill="#654321" opacity="0.6" rx="1"/>
+  
+  <!-- Cross detail -->
+  <rect x="87" y="90" width="6" height="30" fill="#8B4513" opacity="0.8"/>
+  <rect x="78" y="102" width="24" height="6" fill="#8B4513" opacity="0.8"/>
+  
+  <!-- Hinges -->
+  <rect x="48" y="70" width="6" height="12" fill="url(#metalGradient)" rx="1"/>
+  <rect x="48" y="130" width="6" height="12" fill="url(#metalGradient)" rx="1"/>
+  <rect x="126" y="70" width="6" height="12" fill="url(#metalGradient)" rx="1"/>
+  <rect x="126" y="130" width="6" height="12" fill="url(#metalGradient)" rx="1"/>
+  
+  <!-- Stone texture details -->
+  <path d="M 35 95 L 145 95" stroke="#555" stroke-width="1" opacity="0.5"/>
+  <path d="M 35 125 L 145 125" stroke="#555" stroke-width="1" opacity="0.5"/>
+</svg>

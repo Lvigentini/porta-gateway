@@ -16,8 +16,8 @@ export default async function handler(
 
   try {
     // Test Supabase connection using REST API
-    const supabaseUrl = process.env.VITE_CLIENT_SUPABASE_URL;
-    const supabaseAnonKey = process.env.VITE_CLIENT_SUPABASE_ANON_KEY;
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
 
     let status = 'healthy';
     let dbStatus = 'healthy';
@@ -48,13 +48,13 @@ export default async function handler(
     return res.status(200).json({
       status,
       timestamp: new Date().toISOString(),
-      version: '1.0.0',
+      version: '1.2.0',
       message: 'Porta Gateway (React + Vite)',
       environment: {
         hasSupabaseUrl: !!supabaseUrl,
         hasSupabaseKey: !!supabaseAnonKey,
-        hasJwtSecret: !!process.env.VITE_CLIENT_JWT_SECRET,
-        hasArcaSecret: !!process.env.VITE_CLIENT_ARCA_APP_SECRET
+        hasJwtSecret: !!process.env.VITE_JWT_SECRET,
+        hasArcaSecret: !!process.env.VITE_ARCA_APP_SECRET
       },
       services: {
         database: { status: dbStatus },

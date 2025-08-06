@@ -1,0 +1,7 @@
+User-agent: *
+Disallow: /api/
+Disallow: /admin/
+Disallow: /docs/
+Disallow: /internal/
+Disallow: /_next/
+Disallow: /debug/
