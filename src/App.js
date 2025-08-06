@@ -88,8 +88,8 @@ function App() {
     const testSupabaseDirect = async () => {
         try {
             console.log('🧪 Testing Supabase direct connection...');
-            const supabaseUrl = import.meta.env.VITE_CLIENT_SUPABASE_URL;
-            const supabaseKey = import.meta.env.VITE_CLIENT_SUPABASE_ANON_KEY;
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
             console.log('🧪 Environment variables:', {
                 hasUrl: !!supabaseUrl,
                 hasKey: !!supabaseKey,

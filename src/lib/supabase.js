@@ -1,33 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
-const supabaseUrl = import.meta.env.VITE_CLIENT_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_CLIENT_SUPABASE_ANON_KEY;
-// Validate URL format before attempting to create client
-function isValidUrl(urlString) {
-    try {
-        new URL(urlString);
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
-let supabase = null;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 if (!supabaseUrl || !supabaseAnonKey) {
-    console.warn('Supabase credentials not found - authentication will fail');
+    console.warn('Supabase credentials not found - using fallback mode');
 }
-else if (!isValidUrl(supabaseUrl)) {
-    console.error('Invalid Supabase URL format:', supabaseUrl);
-}
-else {
-    try {
-        supabase = createClient(supabaseUrl, supabaseAnonKey);
-    }
-    catch (error) {
-        console.error('Failed to create Supabase client:', error);
-        supabase = null;
-    }
-}
-export { supabase };
+export const supabase = supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null;
 // Connection test utility
 export async function testSupabaseConnection() {
     if (!supabase) {
@@ -48,7 +27,22 @@ export async function testSupabaseConnection() {
                 error: error.message
             };
         }
-        return { connected: true };
+        // Try to get available tables if the RPC function exists
+        let tables = ['users'];
+        try {
+            const { data: rpcTables, error: rpcError } = await supabase.rpc('get_tables');
+            if (!rpcError && rpcTables) {
+                tables = rpcTables.map((t) => t.table_name || t);
+            }
+        }
+        catch (rpcErr) {
+            // RPC function might not exist yet, use default tables
+            console.log('RPC function not available, using default table list');
+        }
+        return {
+            connected: true,
+            tables
+        };
     }
     catch (error) {
         return {

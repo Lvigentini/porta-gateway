@@ -96,12 +96,33 @@ function App() {
     }
   };
 
+  const testLogout = async () => {
+    try {
+      console.log('🚪 Starting test logout...');
+      
+      const result = await AuthService.logout();
+      
+      if (result.success) {
+        console.log('✅ Logout successful!');
+        alert('Test logout successful!');
+        // Refresh the status after logout
+        await checkHealth();
+      } else {
+        console.log('❌ Logout failed:', result.error);
+        alert('Test logout failed: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('💥 Test logout error:', error);
+      alert('Test logout error: ' + error);
+    }
+  };
+
   const testSupabaseDirect = async () => {
     try {
       console.log('🧪 Testing Supabase direct connection...');
       
-      const supabaseUrl = import.meta.env.VITE_CLIENT_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_CLIENT_SUPABASE_ANON_KEY;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       
       console.log('🧪 Environment variables:', {
         hasUrl: !!supabaseUrl,
@@ -228,7 +249,7 @@ function App() {
         }}>{status}</span></p>
         <p><strong>Last Check:</strong> {lastTest}</p>
         
-        <div style={{ marginTop: '1rem' }}>
+        <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
           <button 
             onClick={checkHealth}
             style={{
@@ -237,11 +258,10 @@ function App() {
               border: 'none',
               padding: '0.5rem 1rem',
               borderRadius: '4px',
-              cursor: 'pointer',
-              marginRight: '1rem'
+              cursor: 'pointer'
             }}
           >
-            Refresh Status
+            🔄 Refresh Status
           </button>
           
           <button 
@@ -252,11 +272,24 @@ function App() {
               border: 'none',
               padding: '0.5rem 1rem',
               borderRadius: '4px',
-              cursor: 'pointer',
-              marginRight: '1rem'
+              cursor: 'pointer'
             }}
           >
-            Test Login (Client)
+            🔑 Test Login
+          </button>
+
+          <button 
+            onClick={testLogout}
+            style={{
+              background: '#ef4444',
+              color: 'white',
+              border: 'none',
+              padding: '0.5rem 1rem',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            🚪 Test Logout
           </button>
 
           <button 
@@ -270,7 +303,7 @@ function App() {
               cursor: 'pointer'
             }}
           >
-            Test Supabase Direct
+            🔬 Supabase Direct
           </button>
 
           <button 
@@ -281,11 +314,10 @@ function App() {
               border: 'none',
               padding: '0.5rem 1rem',
               borderRadius: '4px',
-              cursor: 'pointer',
-              marginLeft: '1rem'
+              cursor: 'pointer'
             }}
           >
-            Test Prod Health
+            🏥 Prod Health
           </button>
 
           <button 
@@ -296,11 +328,10 @@ function App() {
               border: 'none',
               padding: '0.5rem 1rem',
               borderRadius: '4px',
-              cursor: 'pointer',
-              marginLeft: '1rem'
+              cursor: 'pointer'
             }}
           >
-            Test Simple API
+            🧪 Simple API
           </button>
         </div>
       </div>

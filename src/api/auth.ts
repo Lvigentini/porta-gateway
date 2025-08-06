@@ -69,16 +69,16 @@ async function handleLogin(request: Request): Promise<Response> {
       );
     }
 
-    console.log('🔐 handleLogin: Calling AuthService.authenticate...');
+    console.log('🔐 handleLogin: Calling AuthService.login...');
     // Authenticate using the same pattern as ARCA
-    const result = await AuthService.authenticate(credentials);
+    const result = await AuthService.login(credentials);
     console.log('🔐 handleLogin: AuthService result:', { 
       success: result.success, 
       error: result.error,
-      hasToken: !!result.token 
+      hasUser: !!result.user 
     });
 
-    if (!result.success) {
+    if (!result.success || !result.user) {
       console.log('🔐 handleLogin: Authentication failed:', result.error);
       return new Response(
         JSON.stringify({ error: result.error }),
@@ -92,16 +92,47 @@ async function handleLogin(request: Request): Promise<Response> {
       );
     }
 
-    console.log('🔐 handleLogin: Authentication successful, returning token');
+    console.log('🔐 handleLogin: Authentication successful, generating token');
+    
+    // Generate simple JWT-like token (base64 encoded for simplicity) 
+    const payload = {
+      sub: result.user.id,
+      email: result.user.email,
+      role: result.user.role,
+      app: credentials.app || 'unknown',
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + (30 * 60), // 30 minutes
+      iss: 'porta-gateway'
+    };
+
+    // Simple base64 encoded token for consistency
+    const token = btoa(JSON.stringify(payload));
+    const refresh_token = btoa(JSON.stringify({
+      ...payload, 
+      type: 'refresh', 
+      exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days
+    }));
+
+    // Determine redirect URL
+    let finalRedirectUrl = credentials.redirect_url;
+    if (credentials.app === 'arca' && !finalRedirectUrl) {
+      finalRedirectUrl = 'https://arca-alpha.vercel.app';
+    }
+    
     // Return successful authentication
     return new Response(
       JSON.stringify({
         success: true,
-        token: result.token,
-        refresh_token: result.refresh_token,
-        user: result.user,
+        token,
+        refresh_token,
+        user: {
+          id: result.user.id,
+          email: result.user.email,
+          name: `${result.user.profile.firstName || ''} ${result.user.profile.lastName || ''}`.trim() || result.user.email,
+          role: result.user.role
+        },
         expires_in: 1800, // 30 minutes
-        redirect_url: result.redirect_url
+        redirect_url: finalRedirectUrl
       }),
       { 
         status: 200, 

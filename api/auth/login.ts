@@ -27,7 +27,7 @@ export default async function handler(
 
       // Validate ARCA app requests
       if (app === 'arca') {
-        const arcaAppSecret = process.env.VITE_CLIENT_ARCA_APP_SECRET;
+        const arcaAppSecret = process.env.VITE_ARCA_APP_SECRET;
         const providedSecret = req.headers['x-arca-app-secret'] || req.body.app_secret;
         
         if (!arcaAppSecret || providedSecret !== arcaAppSecret) {
@@ -36,8 +36,8 @@ export default async function handler(
       }
 
       // Use Supabase REST API for server-side authentication (like curl test)
-      const supabaseUrl = process.env.VITE_CLIENT_SUPABASE_URL;
-      const supabaseAnonKey = process.env.VITE_CLIENT_SUPABASE_ANON_KEY;
+      const supabaseUrl = process.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
 
       if (!supabaseUrl || !supabaseAnonKey) {
         return res.status(500).json({ error: 'Supabase not configured' });
