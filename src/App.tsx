@@ -78,6 +78,10 @@ function App() {
       const result = await response.json();
       console.log('📦 Full response body:', result);
       
+      if (response.status >= 400) {
+        console.error('🚨 API Error Response:', result);
+      }
+      
       if (result.success && result.token) {
         console.log('✅ Login successful!');
         alert('Test login successful! Token: ' + result.token.substring(0, 20) + '...');
@@ -160,6 +164,26 @@ function App() {
     }
   };
 
+  const testProductionHealth = async () => {
+    try {
+      console.log('🏥 Testing production health endpoint...');
+      
+      const response = await fetch('/api/health');
+      const result = await response.json();
+      
+      console.log('🏥 Health response:', result);
+      
+      if (response.ok) {
+        alert('✅ Production health check successful!\nStatus: ' + result.status);
+      } else {
+        alert('❌ Production health check failed: ' + result.error);
+      }
+    } catch (error) {
+      console.error('🏥 Health check error:', error);
+      alert('❌ Health check error: ' + error);
+    }
+  };
+
   return (
     <div style={{ 
       padding: '2rem', 
@@ -227,6 +251,21 @@ function App() {
             }}
           >
             Test Supabase Direct
+          </button>
+
+          <button 
+            onClick={testProductionHealth}
+            style={{
+              background: '#7c3aed',
+              color: 'white',
+              border: 'none',
+              padding: '0.5rem 1rem',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              marginLeft: '1rem'
+            }}
+          >
+            Test Prod Health
           </button>
         </div>
       </div>
