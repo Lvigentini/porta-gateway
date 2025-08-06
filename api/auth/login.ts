@@ -1,6 +1,5 @@
 // Vercel Function for authentication
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import jwt from 'jsonwebtoken';
 
 // Server-side authentication using Supabase REST API
 
@@ -84,27 +83,26 @@ export default async function handler(
 
       const userProfile = profileData[0];
 
-      // Generate simple JWT token
+      // Generate simple JWT-like token (base64 encoded for simplicity)
       const jwtSecret = process.env.VITE_CLIENT_JWT_SECRET || 'dev-super-secret-key';
       
       const payload = {
         sub: userProfile.id,
         email: userProfile.email,
         role: userProfile.role,
-        app: app || 'unknown'
+        app: app || 'unknown',
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + (30 * 60), // 30 minutes
+        iss: 'porta-gateway'
       };
 
-      const token = jwt.sign(payload, jwtSecret, {
-        algorithm: 'HS256',
-        expiresIn: '30m',
-        issuer: 'porta-gateway'
-      });
-
-      const refresh_token = jwt.sign(
-        { sub: userProfile.id, type: 'refresh' },
-        jwtSecret,
-        { algorithm: 'HS256', expiresIn: '7d', issuer: 'porta-gateway' }
-      );
+      // Simple base64 encoded token (same as local version for consistency)
+      const token = Buffer.from(JSON.stringify(payload)).toString('base64');
+      const refresh_token = Buffer.from(JSON.stringify({
+        ...payload, 
+        type: 'refresh', 
+        exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days
+      })).toString('base64');
 
       // Determine redirect URL
       let finalRedirectUrl = redirect_url;
