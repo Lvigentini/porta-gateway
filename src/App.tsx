@@ -50,6 +50,10 @@ function App() {
     try {
       console.log('🔥 Starting test login...');
       
+      // Debug environment variable
+      console.log('🔐 VITE_ARCA_APP_SECRET value:', import.meta.env.VITE_ARCA_APP_SECRET);
+      console.log('🔐 Expected value: e636839fd8ad07bfe5a85da0226f4ed133a5810e42e60221c4b16f40346549f0');
+      
       const credentials = {
         email: 'admin@arca.dev',
         password: 'admin123',
