@@ -58,7 +58,7 @@ function App() {
         app_secret: import.meta.env.VITE_ARCA_APP_SECRET
       };
       
-      console.log('📤 Sending credentials:', credentials);
+      console.log('📤 Sending credentials with app_secret:', credentials);
       
       // Check if we're running locally or in production
       const isLocal = import.meta.env.DEV;
