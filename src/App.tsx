@@ -2,10 +2,13 @@ import { useState, useEffect } from 'react';
 import { AuthService } from './services/AuthService';
 import { handleAuth } from './api/auth';
 import { APP_VERSION, BUILD_DATE } from './constants/version';
+import { EmergencyAdmin } from './components/EmergencyAdmin';
 
 function App() {
   const [status, setStatus] = useState<string>('Loading...');
   const [lastTest, setLastTest] = useState<string>('');
+  const [showEmergencyAccess, setShowEmergencyAccess] = useState(false);
+  const [systemHealth, setSystemHealth] = useState<any>(null);
 
   useEffect(() => {
     // Set dynamic page title
@@ -28,13 +31,22 @@ function App() {
   const checkHealth = async () => {
     try {
       console.log('🏥 checkHealth: Starting health check...');
-      const health = await AuthService.getHealth();
+      const response = await fetch('/api/health');
+      const health = await response.json();
       console.log('🏥 checkHealth: Health result:', health);
+      
       setStatus(health.status);
       setLastTest(health.timestamp);
+      setSystemHealth(health);
+      
+      // Show emergency access if system is in emergency mode
+      if (health.systemHealth?.emergencyModeRecommended) {
+        setShowEmergencyAccess(true);
+      }
     } catch (error) {
       console.error('🏥 checkHealth: Error:', error);
       setStatus('Error checking health: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      setShowEmergencyAccess(true); // Show emergency access if health check fails
     }
   };
 
@@ -246,6 +258,38 @@ function App() {
     }
   };
 
+  const handleEmergencyLogin = async (credentials: { email: string; token: string }) => {
+    try {
+      const response = await fetch('/api/admin/emergency-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials)
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        alert(`Emergency login successful!\nToken: ${result.token.substring(0, 20)}...\nExpires: ${result.expiresAt}`);
+        setShowEmergencyAccess(false);
+        checkHealth(); // Refresh health status
+      } else {
+        throw new Error(result.error || 'Emergency login failed');
+      }
+    } catch (error) {
+      console.error('Emergency login failed:', error);
+      throw error;
+    }
+  };
+
+  const toggleEmergencyAccess = () => {
+    setShowEmergencyAccess(!showEmergencyAccess);
+  };
+
+  // Show emergency access interface if requested or if system is unhealthy
+  if (showEmergencyAccess) {
+    return <EmergencyAdmin onEmergencyLogin={handleEmergencyLogin} />;
+  }
+
   return (
     <div style={{ 
       padding: '2rem', 
@@ -283,6 +327,22 @@ function App() {
             }}>{status}</span></p>
             <p><strong>Last Check:</strong> {lastTest}</p>
             <p><strong>Environment:</strong> {import.meta.env.DEV ? 'Development' : 'Production'}</p>
+            
+            {/* Emergency Mode Warning */}
+            {systemHealth?.systemHealth?.emergencyModeRecommended && (
+              <div style={{
+                background: '#fee2e2',
+                border: '1px solid #fecaca',
+                borderRadius: '6px',
+                padding: '0.75rem',
+                marginTop: '1rem'
+              }}>
+                <strong style={{ color: '#dc2626' }}>⚠️ Emergency Mode Recommended</strong>
+                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: '#7f1d1d' }}>
+                  System performance degraded. Consider emergency access.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Test Buttons */}
@@ -389,6 +449,25 @@ function App() {
                   🧪 Simple API
                 </button>
               </div>
+            </div>
+
+            {/* Emergency Access */}
+            <div style={{ marginTop: '1rem' }}>
+              <h4 style={{ fontSize: '0.9rem', color: '#6b7280', margin: '0 0 0.5rem 0' }}>Emergency Access</h4>
+              <button 
+                onClick={toggleEmergencyAccess}
+                style={{
+                  background: '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem'
+                }}
+              >
+                🚨 Emergency Admin
+              </button>
             </div>
           </div>
         </div>

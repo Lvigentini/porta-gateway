@@ -1,6 +1,18 @@
 // Vercel Function for authentication
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+// Simple inline function to record auth attempts (to avoid import issues)
+function recordAuthAttempt(success: boolean, responseTime: number, error?: string): void {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    success,
+    responseTime,
+    error,
+    type: 'auth_attempt'
+  };
+  console.log('[Auth] Authentication attempt:', logEntry);
+}
+
 // Server-side authentication using Supabase REST API
 
 export default async function handler(
@@ -9,19 +21,24 @@ export default async function handler(
 ) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Request-ID, x-porta-version');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Request-ID, x-porta-version, x-arca-app-secret');
+  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+  res.setHeader('Access-Control-Allow-Credentials', 'false');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
   if (req.method === 'POST') {
+    const startTime = Date.now();
+    
     try {
       const { email, password, app, redirect_url } = req.body;
 
       // Validate required fields
       if (!email || !password) {
+        recordAuthAttempt(false, Date.now() - startTime, 'Missing email or password');
         return res.status(400).json({ error: 'Email and password are required' });
       }
 
@@ -31,6 +48,7 @@ export default async function handler(
         const providedSecret = req.headers['x-arca-app-secret'] || req.body.app_secret;
         
         if (!arcaAppSecret || providedSecret !== arcaAppSecret) {
+          recordAuthAttempt(false, Date.now() - startTime, 'Invalid app credentials');
           return res.status(401).json({ error: 'Invalid app credentials' });
         }
       }
@@ -40,6 +58,7 @@ export default async function handler(
       const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
 
       if (!supabaseUrl || !supabaseAnonKey) {
+        recordAuthAttempt(false, Date.now() - startTime, 'Supabase not configured');
         return res.status(500).json({ error: 'Supabase not configured' });
       }
 
@@ -54,6 +73,7 @@ export default async function handler(
       });
 
       if (!authResponse.ok) {
+        recordAuthAttempt(false, Date.now() - startTime, 'Invalid login credentials');
         return res.status(401).json({ error: 'Invalid login credentials' });
       }
 
@@ -85,6 +105,7 @@ export default async function handler(
       const authResult = (await authResponse.json()) as SupabaseAuthResponse;
       
       if (!authResult.access_token || !authResult.user) {
+        recordAuthAttempt(false, Date.now() - startTime, 'Authentication failed');
         return res.status(401).json({ error: 'Authentication failed' });
       }
 
@@ -97,12 +118,14 @@ export default async function handler(
       });
 
       if (!profileResponse.ok) {
+        recordAuthAttempt(false, Date.now() - startTime, 'Failed to fetch user profile');
         return res.status(401).json({ error: 'Failed to fetch user profile' });
       }
 
       const profileData = await profileResponse.json();
       
       if (!Array.isArray(profileData) || profileData.length === 0) {
+        recordAuthAttempt(false, Date.now() - startTime, 'User profile not found');
         return res.status(401).json({ error: 'User profile not found' });
       }
 
@@ -134,6 +157,9 @@ export default async function handler(
         finalRedirectUrl = 'https://arca-alpha.vercel.app';
       }
 
+      // Record successful authentication
+      recordAuthAttempt(true, Date.now() - startTime);
+
       return res.status(200).json({
         success: true,
         token,
@@ -152,6 +178,7 @@ export default async function handler(
 
     } catch (error) {
       console.error('Login error:', error);
+      recordAuthAttempt(false, Date.now() - startTime, 'Internal server error');
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
