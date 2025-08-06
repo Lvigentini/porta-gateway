@@ -1,13 +1,5 @@
 // Vercel Function for health check
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Allow-Credentials': 'true'
-};
 
 export default async function handler(
   req: VercelRequest,
@@ -23,24 +15,33 @@ export default async function handler(
   }
 
   try {
-    // Test Supabase connection
+    // Test Supabase connection using REST API
     const supabaseUrl = process.env.VITE_CLIENT_SUPABASE_URL;
     const supabaseAnonKey = process.env.VITE_CLIENT_SUPABASE_ANON_KEY;
 
     let status = 'healthy';
+    let dbStatus = 'healthy';
     
     if (!supabaseUrl || !supabaseAnonKey) {
       status = 'unhealthy - supabase not configured';
+      dbStatus = 'unhealthy';
     } else {
-      const supabase = createClient(supabaseUrl, supabaseAnonKey);
-      
-      const { error } = await supabase
-        .from('users')
-        .select('count', { count: 'exact' })
-        .limit(1);
+      // Test database connection with a simple query
+      try {
+        const dbResponse = await fetch(`${supabaseUrl}/rest/v1/users?select=count&limit=1`, {
+          headers: {
+            'apikey': supabaseAnonKey,
+            'Range': '0-0'
+          }
+        });
 
-      if (error) {
-        status = 'unhealthy - database error';
+        if (!dbResponse.ok) {
+          status = 'unhealthy - database error';
+          dbStatus = 'unhealthy';
+        }
+      } catch (dbError) {
+        status = 'unhealthy - database connection failed';
+        dbStatus = 'unhealthy';
       }
     }
 
@@ -49,8 +50,14 @@ export default async function handler(
       timestamp: new Date().toISOString(),
       version: '1.0.0',
       message: 'Porta Gateway (React + Vite)',
+      environment: {
+        hasSupabaseUrl: !!supabaseUrl,
+        hasSupabaseKey: !!supabaseAnonKey,
+        hasJwtSecret: !!process.env.VITE_CLIENT_JWT_SECRET,
+        hasArcaSecret: !!process.env.VITE_CLIENT_ARCA_APP_SECRET
+      },
       services: {
-        database: { status: status.includes('healthy') ? 'healthy' : 'unhealthy' },
+        database: { status: dbStatus },
         authentication: { status: 'healthy', provider: 'Supabase' }
       }
     });
@@ -59,7 +66,8 @@ export default async function handler(
     return res.status(500).json({
       status: 'error',
       timestamp: new Date().toISOString(),
-      error: 'Health check failed'
+      error: 'Health check failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 }
