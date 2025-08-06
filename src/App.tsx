@@ -8,6 +8,9 @@ function App() {
   const [lastTest, setLastTest] = useState<string>('');
 
   useEffect(() => {
+    // Set dynamic page title
+    document.title = `Porta Gateway v${APP_VERSION}`;
+    
     // Debug environment variables
     console.log('🔧 Environment check:', {
       hasSupabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
