@@ -72,7 +72,6 @@ export class AuthService {
       
       if (isLocal) {
         // LOCAL: Generate JWT token for testing
-        const jwtSecret = import.meta.env.VITE_CLIENT_JWT_SECRET || 'dev-super-secret-key';
         console.log('🔑 AuthService.authenticate: Generating local JWT token...');
         
         const payload = {

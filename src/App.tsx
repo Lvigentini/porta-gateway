@@ -71,7 +71,7 @@ function App() {
       }
     } catch (error) {
       console.error('💥 Test login error:', error);
-      console.error('💥 Error stack:', error.stack);
+      console.error('💥 Error stack:', error instanceof Error ? error.stack : 'No stack');
       alert('Test error: ' + error);
     }
   };

@@ -114,7 +114,7 @@ async function handleLogin(request: Request): Promise<Response> {
 
   } catch (error) {
     console.error('🔐 handleLogin: Critical error:', error);
-    console.error('🔐 handleLogin: Error stack:', error.stack);
+    console.error('🔐 handleLogin: Error stack:', error instanceof Error ? error.stack : 'No stack');
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
       { 
