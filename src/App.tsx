@@ -34,28 +34,113 @@ function App() {
   };
 
   const testLogin = async () => {
+    console.log('BUTTON CLICKED - testLogin function called');
     try {
+      console.log('🔥 Starting test login...');
+      
+      const credentials = {
+        email: 'admin@arca.dev',
+        password: 'admin123',
+        app: 'arca',
+        redirect_url: 'https://arca-alpha.vercel.app'
+      };
+      
+      console.log('📤 Sending credentials:', credentials);
+      
       const testRequest = new Request('http://localhost/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials)
+      });
+
+      console.log('🚀 Making auth request...');
+      const response = await handleAuth(testRequest);
+      
+      console.log('📨 Response status:', response.status);
+      console.log('📨 Response headers:', Object.fromEntries(response.headers.entries()));
+      
+      const result = await response.json();
+      console.log('📦 Full response body:', result);
+      
+      if (result.success && result.token) {
+        console.log('✅ Login successful!');
+        alert('Test login successful! Token: ' + result.token.substring(0, 20) + '...');
+      } else {
+        console.log('❌ Login failed:', result.error || 'Unknown error');
+        alert('Test login failed: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('💥 Test login error:', error);
+      console.error('💥 Error stack:', error.stack);
+      alert('Test error: ' + error);
+    }
+  };
+
+  const testSupabaseDirect = async () => {
+    try {
+      console.log('🧪 Testing Supabase direct connection...');
+      
+      const supabaseUrl = import.meta.env.VITE_CLIENT_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_CLIENT_SUPABASE_ANON_KEY;
+      
+      console.log('🧪 Environment variables:', {
+        hasUrl: !!supabaseUrl,
+        hasKey: !!supabaseKey,
+        url: supabaseUrl
+      });
+
+      // Test 1: Direct Supabase auth
+      console.log('🧪 Step 1: Testing Supabase auth API...');
+      const authResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey,
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({
           email: 'admin@arca.dev',
-          password: 'admin123',
-          app: 'arca',
-          redirect_url: 'https://arca-alpha.vercel.app'
+          password: 'admin123'
         })
       });
 
-      const response = await handleAuth(testRequest);
-      const result = await response.json();
-      
-      if (result.success) {
-        alert('Test login successful! Token: ' + result.token.substring(0, 20) + '...');
-      } else {
-        alert('Test login failed: ' + result.error);
+      const authResult = await authResponse.json();
+      console.log('🧪 Auth API result:', {
+        status: authResponse.status,
+        hasAccessToken: !!authResult.access_token,
+        hasUser: !!authResult.user,
+        userId: authResult.user?.id
+      });
+
+      if (!authResult.access_token) {
+        alert('❌ Supabase auth failed: ' + JSON.stringify(authResult));
+        return;
       }
+
+      // Test 2: User profile lookup
+      console.log('🧪 Step 2: Testing user profile lookup...');
+      const profileResponse = await fetch(`${supabaseUrl}/rest/v1/users?id=eq.${authResult.user.id}`, {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${authResult.access_token}`
+        }
+      });
+
+      const profileResult = await profileResponse.json();
+      console.log('🧪 Profile API result:', {
+        status: profileResponse.status,
+        userCount: Array.isArray(profileResult) ? profileResult.length : 0,
+        user: profileResult[0]
+      });
+
+      if (profileResult.length > 0) {
+        alert('✅ Supabase direct test successful!\nUser: ' + profileResult[0].email + '\nRole: ' + profileResult[0].role);
+      } else {
+        alert('❌ User profile not found');
+      }
+
     } catch (error) {
-      alert('Test error: ' + error);
+      console.error('🧪 Supabase direct test error:', error);
+      alert('❌ Direct test error: ' + error);
     }
   };
 
@@ -107,10 +192,25 @@ function App() {
               border: 'none',
               padding: '0.5rem 1rem',
               borderRadius: '4px',
+              cursor: 'pointer',
+              marginRight: '1rem'
+            }}
+          >
+            Test Login (Client)
+          </button>
+
+          <button 
+            onClick={testSupabaseDirect}
+            style={{
+              background: '#dc2626',
+              color: 'white',
+              border: 'none',
+              padding: '0.5rem 1rem',
+              borderRadius: '4px',
               cursor: 'pointer'
             }}
           >
-            Test Login
+            Test Supabase Direct
           </button>
         </div>
       </div>

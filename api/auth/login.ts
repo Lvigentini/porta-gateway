@@ -35,9 +35,19 @@ export default async function handler(
         return res.status(400).json({ error: 'Email and password are required' });
       }
 
+      // Validate ARCA app requests
+      if (app === 'arca') {
+        const arcaAppSecret = process.env.VITE_CLIENT_ARCA_APP_SECRET;
+        const providedSecret = req.headers['x-arca-app-secret'] || req.body.app_secret;
+        
+        if (!arcaAppSecret || providedSecret !== arcaAppSecret) {
+          return res.status(401).json({ error: 'Invalid app credentials' });
+        }
+      }
+
       // Use Supabase to authenticate (same pattern as ARCA)
-      const supabaseUrl = process.env.SUPABASE_URL;
-      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+      const supabaseUrl = process.env.VITE_CLIENT_SUPABASE_URL;
+      const supabaseAnonKey = process.env.VITE_CLIENT_SUPABASE_ANON_KEY;
 
       if (!supabaseUrl || !supabaseAnonKey) {
         return res.status(500).json({ error: 'Supabase not configured' });
@@ -67,7 +77,7 @@ export default async function handler(
       }
 
       // Generate simple JWT token
-      const jwtSecret = process.env.JWT_SECRET || 'dev-super-secret-key';
+      const jwtSecret = process.env.VITE_CLIENT_JWT_SECRET || 'dev-super-secret-key';
       
       const payload = {
         sub: userProfile.id,

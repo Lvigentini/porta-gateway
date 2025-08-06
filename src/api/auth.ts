@@ -45,10 +45,18 @@ export async function handleAuth(request: Request): Promise<Response> {
  */
 async function handleLogin(request: Request): Promise<Response> {
   try {
+    console.log('🔐 handleLogin: Starting authentication...');
+    
     const credentials: LoginCredentials = await request.json();
+    console.log('🔐 handleLogin: Received credentials:', { 
+      email: credentials.email, 
+      app: credentials.app,
+      hasPassword: !!credentials.password 
+    });
 
     // Validate required fields
     if (!credentials.email || !credentials.password) {
+      console.log('🔐 handleLogin: Missing required fields');
       return new Response(
         JSON.stringify({ error: 'Email and password are required' }),
         { 
@@ -61,10 +69,17 @@ async function handleLogin(request: Request): Promise<Response> {
       );
     }
 
+    console.log('🔐 handleLogin: Calling AuthService.authenticate...');
     // Authenticate using the same pattern as ARCA
     const result = await AuthService.authenticate(credentials);
+    console.log('🔐 handleLogin: AuthService result:', { 
+      success: result.success, 
+      error: result.error,
+      hasToken: !!result.token 
+    });
 
     if (!result.success) {
+      console.log('🔐 handleLogin: Authentication failed:', result.error);
       return new Response(
         JSON.stringify({ error: result.error }),
         { 
@@ -77,6 +92,7 @@ async function handleLogin(request: Request): Promise<Response> {
       );
     }
 
+    console.log('🔐 handleLogin: Authentication successful, returning token');
     // Return successful authentication
     return new Response(
       JSON.stringify({
@@ -97,7 +113,8 @@ async function handleLogin(request: Request): Promise<Response> {
     );
 
   } catch (error) {
-    console.error('Login handler error:', error);
+    console.error('🔐 handleLogin: Critical error:', error);
+    console.error('🔐 handleLogin: Error stack:', error.stack);
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
       { 
