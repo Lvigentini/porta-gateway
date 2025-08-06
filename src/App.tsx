@@ -47,14 +47,30 @@ function App() {
       
       console.log('📤 Sending credentials:', credentials);
       
-      const testRequest = new Request('http://localhost/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials)
-      });
-
-      console.log('🚀 Making auth request...');
-      const response = await handleAuth(testRequest);
+      // Check if we're running locally or in production
+      const isLocal = import.meta.env.DEV;
+      console.log('🔥 Running locally:', isLocal);
+      
+      let response: Response;
+      
+      if (isLocal) {
+        // LOCAL: Use client-side auth handler
+        console.log('🚀 Making local auth request...');
+        const testRequest = new Request('http://localhost/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(credentials)
+        });
+        response = await handleAuth(testRequest);
+      } else {
+        // PRODUCTION: Call actual Vercel function
+        console.log('🚀 Making production API request to /api/auth/login...');
+        response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(credentials)
+        });
+      }
       
       console.log('📨 Response status:', response.status);
       console.log('📨 Response headers:', Object.fromEntries(response.headers.entries()));
