@@ -47,6 +47,7 @@ function App() {
 
   const testLogin = async () => {
     console.log('BUTTON CLICKED - testLogin function called');
+    console.log('🚨🚨🚨 THIS IS THE NEW VERSION WITH DEBUG CODE 🚨🚨🚨');
     try {
       console.log('🔥 Starting test login...');
       
