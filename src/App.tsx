@@ -184,6 +184,26 @@ function App() {
     }
   };
 
+  const testSimpleEndpoint = async () => {
+    try {
+      console.log('🧪 Testing simple API endpoint...');
+      
+      const response = await fetch('/api/test-simple');
+      const result = await response.json();
+      
+      console.log('🧪 Simple API response:', result);
+      
+      if (response.ok) {
+        alert('✅ Simple API works!\nEnvironment variables found: ' + result.environment.envVars.join(', '));
+      } else {
+        alert('❌ Simple API failed: ' + result.error);
+      }
+    } catch (error) {
+      console.error('🧪 Simple API error:', error);
+      alert('❌ Simple API error: ' + error);
+    }
+  };
+
   return (
     <div style={{ 
       padding: '2rem', 
@@ -266,6 +286,21 @@ function App() {
             }}
           >
             Test Prod Health
+          </button>
+
+          <button 
+            onClick={testSimpleEndpoint}
+            style={{
+              background: '#f59e0b',
+              color: 'white',
+              border: 'none',
+              padding: '0.5rem 1rem',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              marginLeft: '1rem'
+            }}
+          >
+            Test Simple API
           </button>
         </div>
       </div>
