@@ -5,7 +5,7 @@ interface EmergencyAdminProps {
 }
 
 interface SystemStatus {
-  status: string;
+  overallStatus: string;
   emergencyModeRecommended: boolean;
   recentIssues: string[];
   recommendations: string[];
@@ -105,11 +105,11 @@ export function EmergencyAdmin({ onEmergencyLogin }: EmergencyAdminProps) {
               marginLeft: '0.5rem',
               padding: '0.25rem 0.5rem',
               borderRadius: '4px',
-              backgroundColor: getStatusColor(systemStatus.status),
+              backgroundColor: getStatusColor(systemStatus.overallStatus),
               color: 'white',
               fontSize: '0.875rem'
             }}>
-              {systemStatus.status.toUpperCase()}
+              {systemStatus.overallStatus?.toUpperCase() || 'UNKNOWN'}
             </span>
           </div>
 
@@ -127,7 +127,7 @@ export function EmergencyAdmin({ onEmergencyLogin }: EmergencyAdminProps) {
             </div>
           )}
 
-          {systemStatus.recentIssues.length > 0 && (
+          {systemStatus.recentIssues?.length > 0 && (
             <div>
               <strong>Recent Issues:</strong>
               <ul style={{ marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
@@ -259,7 +259,7 @@ export function EmergencyAdmin({ onEmergencyLogin }: EmergencyAdminProps) {
               <strong>Recommendations:</strong>
               <ul style={{ margin: '0.5rem 0', paddingLeft: '1.5rem', fontSize: '0.875rem' }}>
                 {diagnostics.recommendations.slice(0, 3).map((rec: string, index: number) => (
-                  <li key={index} style={{ marginBottom: '0.25rem' }}>{rec}</li>
+                  <li key={index} style={{ marginBottom: '0.25rem' }}>{rec || 'No recommendation available'}</li>
                 ))}
               </ul>
             </div>
