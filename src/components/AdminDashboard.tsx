@@ -7,6 +7,18 @@ interface AdminUser {
   role: string;
 }
 
+interface User {
+  id: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  full_name: string;
+  role: string;
+  created_at: string;
+  updated_at: string;
+  last_login_at?: string;
+}
+
 interface RegisteredApp {
   id: string;
   app_name: string;
@@ -54,6 +66,11 @@ export function AdminDashboard() {
   const [apps, setApps] = useState<RegisteredApp[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showSecrets, setShowSecrets] = useState<{ [key: string]: boolean }>({});
+
+  // User management state
+  const [users, setUsers] = useState<User[]>([]);
+  const [editingUser, setEditingUser] = useState<string | null>(null);
+  const [editingRole, setEditingRole] = useState<string>('');
   
   const [newApp, setNewApp] = useState<AppRegistrationForm>({
     app_name: '',
@@ -78,6 +95,7 @@ export function AdminDashboard() {
         setAdminUser(JSON.parse(savedAdmin));
         setIsLoggedIn(true);
         loadApps(savedToken);
+        loadUsers(savedToken);
       } catch (error) {
         console.error('Invalid saved admin session');
         localStorage.removeItem('porta_admin_token');
@@ -114,8 +132,9 @@ export function AdminDashboard() {
         setSuccess('Admin login successful!');
         setLoginCredentials({ email: '', password: '' });
         
-        // Load apps after successful login
+        // Load apps and users after successful login
         loadApps(data.adminToken);
+        loadUsers(data.adminToken);
         
       } else {
         setError(data.error || 'Login failed');
@@ -135,6 +154,7 @@ export function AdminDashboard() {
     localStorage.removeItem('porta_admin_token');
     localStorage.removeItem('porta_admin_user');
     setApps([]);
+    setUsers([]);
     setSuccess('Logged out successfully');
   };
 
@@ -163,6 +183,81 @@ export function AdminDashboard() {
       setError('Error loading apps');
       console.error('Load apps error:', error);
     }
+  };
+
+  const loadUsers = async (token?: string) => {
+    try {
+      const authToken = token || adminToken;
+      const response = await fetch('/api/admin/users', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setUsers(data.users || []);
+      } else {
+        setError(data.error || 'Failed to load users');
+        
+        if (data.error?.includes('expired')) {
+          handleLogout();
+        }
+      }
+    } catch (error) {
+      setError('Error loading users');
+      console.error('Load users error:', error);
+    }
+  };
+
+  const handleUpdateUserRole = async (userId: string, newRole: string) => {
+    setError('');
+    setSuccess('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`/api/admin/users?user_id=${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({ role: newRole })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccess(`User role updated to '${newRole}' successfully!`);
+        setEditingUser(null);
+        setEditingRole('');
+        loadUsers(); // Reload users list
+      } else {
+        setError(data.error || 'Failed to update user role');
+        
+        if (data.error?.includes('expired')) {
+          handleLogout();
+        }
+      }
+    } catch (error) {
+      setError('Error updating user role');
+      console.error('Update user role error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const startEditingUser = (userId: string, currentRole: string) => {
+    setEditingUser(userId);
+    setEditingRole(currentRole);
+    setError('');
+    setSuccess('');
+  };
+
+  const cancelEditingUser = () => {
+    setEditingUser(null);
+    setEditingRole('');
   };
 
   const handleAddApp = async (e: React.FormEvent) => {
@@ -923,16 +1018,186 @@ export function AdminDashboard() {
       )}
 
       {activeTab === 'users' && (
-        <div style={{
-          background: '#f9fafb',
-          border: '2px dashed #d1d5db',
-          borderRadius: '8px',
-          padding: '3rem',
-          textAlign: 'center',
-          color: '#6b7280'
-        }}>
-          <h3 style={{ margin: '0 0 1rem 0' }}>👥 User Management</h3>
-          <p>User role assignment and management features coming soon.</p>
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <h3 style={{ margin: 0 }}>User Management ({users.length} users)</h3>
+            <button
+              onClick={() => loadUsers()}
+              disabled={isLoading}
+              style={{
+                backgroundColor: '#6b7280',
+                color: 'white',
+                padding: '0.75rem 1.5rem',
+                borderRadius: '6px',
+                border: 'none',
+                fontSize: '1rem',
+                fontWeight: '500',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                opacity: isLoading ? 0.6 : 1
+              }}
+            >
+              🔄 Refresh Users
+            </button>
+          </div>
+
+          {users.length === 0 && !isLoading ? (
+            <div style={{
+              background: '#f9fafb',
+              border: '1px solid #e5e7eb',
+              borderRadius: '8px',
+              padding: '2rem',
+              textAlign: 'center',
+              color: '#6b7280'
+            }}>
+              No users found.
+            </div>
+          ) : (
+            <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr auto', 
+                gap: '1rem', 
+                padding: '1rem 1.5rem', 
+                background: '#f9fafb', 
+                fontWeight: '500',
+                fontSize: '0.875rem',
+                color: '#6b7280',
+                borderBottom: '1px solid #e5e7eb'
+              }}>
+                <div>User</div>
+                <div>Role</div>
+                <div>Created</div>
+                <div>Last Login</div>
+                <div>Status</div>
+                <div>Actions</div>
+              </div>
+
+              {users.map(user => (
+                <div key={user.id} style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr auto', 
+                  gap: '1rem', 
+                  padding: '1rem 1.5rem', 
+                  alignItems: 'center',
+                  borderBottom: users.indexOf(user) === users.length - 1 ? 'none' : '1px solid #f3f4f6'
+                }}>
+                  <div>
+                    <div style={{ fontWeight: '500', color: '#1f2937' }}>{user.full_name}</div>
+                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>{user.email}</div>
+                  </div>
+                  
+                  <div>
+                    {editingUser === user.id ? (
+                      <select
+                        value={editingRole}
+                        onChange={(e) => setEditingRole(e.target.value)}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: '0.875rem',
+                          width: '100%'
+                        }}
+                      >
+                        <option value="user">User</option>
+                        <option value="viewer">Viewer</option>
+                        <option value="editor">Editor</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    ) : (
+                      <span style={{
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: '500',
+                        backgroundColor: user.role === 'admin' ? '#fee2e2' : user.role === 'editor' ? '#fef3c7' : user.role === 'viewer' ? '#dbeafe' : '#f3f4f6',
+                        color: user.role === 'admin' ? '#dc2626' : user.role === 'editor' ? '#d97706' : user.role === 'viewer' ? '#2563eb' : '#6b7280'
+                      }}>
+                        {user.role.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                    {formatDate(user.created_at)}
+                  </div>
+                  
+                  <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                    {user.last_login_at ? formatDate(user.last_login_at) : 'Never'}
+                  </div>
+                  
+                  <div>
+                    <span style={{
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '4px',
+                      fontSize: '0.75rem',
+                      fontWeight: '500',
+                      backgroundColor: '#dcfce7',
+                      color: '#16a34a'
+                    }}>
+                      ACTIVE
+                    </span>
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {editingUser === user.id ? (
+                      <>
+                        <button
+                          onClick={() => handleUpdateUserRole(user.id, editingRole)}
+                          disabled={isLoading || editingRole === user.role}
+                          style={{
+                            backgroundColor: '#16a34a',
+                            color: 'white',
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '4px',
+                            border: 'none',
+                            fontSize: '0.75rem',
+                            cursor: isLoading || editingRole === user.role ? 'not-allowed' : 'pointer',
+                            opacity: isLoading || editingRole === user.role ? 0.5 : 1
+                          }}
+                        >
+                          ✅
+                        </button>
+                        <button
+                          onClick={cancelEditingUser}
+                          disabled={isLoading}
+                          style={{
+                            backgroundColor: '#6b7280',
+                            color: 'white',
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '4px',
+                            border: 'none',
+                            fontSize: '0.75rem',
+                            cursor: isLoading ? 'not-allowed' : 'pointer',
+                            opacity: isLoading ? 0.5 : 1
+                          }}
+                        >
+                          ❌
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => startEditingUser(user.id, user.role)}
+                        disabled={isLoading}
+                        style={{
+                          backgroundColor: '#3b82f6',
+                          color: 'white',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '4px',
+                          border: 'none',
+                          fontSize: '0.75rem',
+                          cursor: isLoading ? 'not-allowed' : 'pointer',
+                          opacity: isLoading ? 0.5 : 1
+                        }}
+                      >
+                        ✏️ Edit
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
