@@ -56,18 +56,66 @@ function getSecretExpiryDate(): string {
   return date.toISOString();
 }
 
-// Validate admin access (simplified for now)
-function validateAdminAccess(req: VercelRequest): { isValid: boolean; error?: string } {
-  // TODO: Implement proper admin token validation
-  // For now, check for emergency access or admin token in header
-  const authHeader = req.headers.authorization;
-  const emergencyToken = req.headers['x-emergency-token'];
-  
-  if (!authHeader && !emergencyToken) {
-    return { isValid: false, error: 'Admin access required' };
+// Admin session token structure
+interface AdminSession {
+  adminId: string;
+  email: string;
+  role: string;
+  iat: number;
+  exp: number;
+  iss: string;
+}
+
+// Validate admin access with proper token validation
+function validateAdminAccess(req: VercelRequest): { isValid: boolean; admin?: AdminSession; error?: string } {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader) {
+      return { isValid: false, error: 'Authorization header required' };
+    }
+
+    if (!authHeader.startsWith('Bearer ')) {
+      return { isValid: false, error: 'Invalid authorization format. Use: Bearer <token>' };
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    
+    // Decode base64 token
+    let adminSession: AdminSession;
+    try {
+      const decoded = Buffer.from(token, 'base64').toString('utf-8');
+      adminSession = JSON.parse(decoded);
+    } catch (error) {
+      return { isValid: false, error: 'Invalid token format' };
+    }
+
+    // Validate token structure
+    if (!adminSession.adminId || !adminSession.email || !adminSession.role || !adminSession.exp || !adminSession.iss) {
+      return { isValid: false, error: 'Invalid token structure' };
+    }
+
+    // Validate issuer
+    if (adminSession.iss !== 'porta-gateway-admin') {
+      return { isValid: false, error: 'Invalid token issuer' };
+    }
+
+    // Check expiration
+    const now = Math.floor(Date.now() / 1000);
+    if (adminSession.exp < now) {
+      return { isValid: false, error: 'Admin token expired. Please login again.' };
+    }
+
+    // Validate admin role
+    if (adminSession.role !== 'admin') {
+      return { isValid: false, error: 'Admin role required' };
+    }
+
+    return { isValid: true, admin: adminSession };
+
+  } catch (error) {
+    return { isValid: false, error: 'Token validation failed' };
   }
-  
-  return { isValid: true };
 }
 
 export default async function handler(
@@ -77,7 +125,7 @@ export default async function handler(
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Request-ID, X-Emergency-Token');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Request-ID');
   res.setHeader('Access-Control-Max-Age', '86400');
 
   if (req.method === 'OPTIONS') {

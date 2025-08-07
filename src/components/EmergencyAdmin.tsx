@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { AppManagement } from './AppManagement';
 
 interface EmergencyAdminProps {
   onEmergencyLogin: (credentials: { email: string; token: string }) => void;
@@ -18,7 +17,6 @@ export function EmergencyAdmin({ onEmergencyLogin }: EmergencyAdminProps) {
   const [diagnostics, setDiagnostics] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'emergency' | 'apps'>('emergency');
 
   useEffect(() => {
     checkSystemHealth();
@@ -86,47 +84,9 @@ export function EmergencyAdmin({ onEmergencyLogin }: EmergencyAdminProps) {
           🚨 Emergency Admin Access
         </h1>
         <p style={{ color: '#6b7280' }}>
-          Emergency system management and app registration
+          Use this interface only when normal authentication is unavailable
         </p>
-        
-        {/* Tab Navigation */}
-        <div style={{ marginTop: '1rem', borderBottom: '2px solid #e5e7eb' }}>
-          <button
-            onClick={() => setActiveTab('emergency')}
-            style={{
-              padding: '0.75rem 1.5rem',
-              border: 'none',
-              background: 'none',
-              borderBottom: activeTab === 'emergency' ? '2px solid #dc2626' : '2px solid transparent',
-              color: activeTab === 'emergency' ? '#dc2626' : '#6b7280',
-              fontWeight: '500',
-              cursor: 'pointer',
-              marginRight: '1rem'
-            }}
-          >
-            🚨 Emergency Access
-          </button>
-          <button
-            onClick={() => setActiveTab('apps')}
-            style={{
-              padding: '0.75rem 1.5rem',
-              border: 'none',
-              background: 'none',
-              borderBottom: activeTab === 'apps' ? '2px solid #dc2626' : '2px solid transparent',
-              color: activeTab === 'apps' ? '#dc2626' : '#6b7280',
-              fontWeight: '500',
-              cursor: 'pointer'
-            }}
-          >
-            🔧 App Management
-          </button>
-        </div>
       </div>
-
-      {activeTab === 'apps' ? (
-        <AppManagement />
-      ) : (
-        <div>
 
       {/* System Status */}
       {systemStatus && (
@@ -320,9 +280,6 @@ export function EmergencyAdmin({ onEmergencyLogin }: EmergencyAdminProps) {
         Only use when normal authentication systems are unavailable. 
         Emergency tokens expire after 24 hours for security.
       </div>
-
-        </div>
-      )}
     </div>
   );
 }

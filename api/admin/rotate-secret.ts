@@ -28,15 +28,60 @@ function createSupabaseClient() {
   return { supabaseUrl, supabaseAnonKey };
 }
 
-function validateAdminAccess(req: VercelRequest): { isValid: boolean; error?: string } {
-  const authHeader = req.headers.authorization;
-  const emergencyToken = req.headers['x-emergency-token'];
-  
-  if (!authHeader && !emergencyToken) {
-    return { isValid: false, error: 'Admin access required' };
+// Admin session token structure
+interface AdminSession {
+  adminId: string;
+  email: string;
+  role: string;
+  iat: number;
+  exp: number;
+  iss: string;
+}
+
+function validateAdminAccess(req: VercelRequest): { isValid: boolean; admin?: AdminSession; error?: string } {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader) {
+      return { isValid: false, error: 'Authorization header required' };
+    }
+
+    if (!authHeader.startsWith('Bearer ')) {
+      return { isValid: false, error: 'Invalid authorization format. Use: Bearer <token>' };
+    }
+
+    const token = authHeader.substring(7);
+    
+    let adminSession: AdminSession;
+    try {
+      const decoded = Buffer.from(token, 'base64').toString('utf-8');
+      adminSession = JSON.parse(decoded);
+    } catch (error) {
+      return { isValid: false, error: 'Invalid token format' };
+    }
+
+    if (!adminSession.adminId || !adminSession.email || !adminSession.role || !adminSession.exp || !adminSession.iss) {
+      return { isValid: false, error: 'Invalid token structure' };
+    }
+
+    if (adminSession.iss !== 'porta-gateway-admin') {
+      return { isValid: false, error: 'Invalid token issuer' };
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    if (adminSession.exp < now) {
+      return { isValid: false, error: 'Admin token expired. Please login again.' };
+    }
+
+    if (adminSession.role !== 'admin') {
+      return { isValid: false, error: 'Admin role required' };
+    }
+
+    return { isValid: true, admin: adminSession };
+
+  } catch (error) {
+    return { isValid: false, error: 'Token validation failed' };
   }
-  
-  return { isValid: true };
 }
 
 export default async function handler(
@@ -46,7 +91,7 @@ export default async function handler(
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Request-ID, X-Emergency-Token');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Request-ID');
   res.setHeader('Access-Control-Max-Age', '86400');
 
   if (req.method === 'OPTIONS') {

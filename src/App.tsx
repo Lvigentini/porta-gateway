@@ -3,16 +3,24 @@ import { AuthService } from './services/AuthService';
 import { handleAuth } from './api/auth';
 import { APP_VERSION, BUILD_DATE } from './constants/version';
 import { EmergencyAdmin } from './components/EmergencyAdmin';
+import { AdminDashboard } from './components/AdminDashboard';
 
 function App() {
   const [status, setStatus] = useState<string>('Loading...');
   const [lastTest, setLastTest] = useState<string>('');
   const [showEmergencyAccess, setShowEmergencyAccess] = useState(false);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [systemHealth, setSystemHealth] = useState<any>(null);
 
   useEffect(() => {
     // Set dynamic page title
     document.title = `Porta Gateway v${APP_VERSION}`;
+    
+    // Check for admin route
+    if (window.location.pathname === '/admin') {
+      setShowAdminDashboard(true);
+      return;
+    }
     
     // Debug environment variables
     console.log('🔧 Environment check:', {
@@ -285,6 +293,11 @@ function App() {
     setShowEmergencyAccess(!showEmergencyAccess);
   };
 
+  // Show admin dashboard if on /admin route
+  if (showAdminDashboard) {
+    return <AdminDashboard />;
+  }
+
   // Show emergency access interface if requested or if system is unhealthy
   if (showEmergencyAccess) {
     return <EmergencyAdmin onEmergencyLogin={handleEmergencyLogin} />;
@@ -467,6 +480,21 @@ function App() {
                 }}
               >
                 🚨 Emergency Admin
+              </button>
+
+              <button 
+                onClick={() => window.location.href = '/admin'}
+                style={{
+                  background: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem'
+                }}
+              >
+                🛠️ Admin Dashboard
               </button>
             </div>
           </div>
