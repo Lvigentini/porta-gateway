@@ -19,9 +19,23 @@
         },
         {
           "key": "Access-Control-Allow-Headers",
-          "value": "Authorization, Content-Type, X-Request-ID, x-porta-version, x-arca-app-secret"
+          "value": "Authorization, Content-Type, X-Request-ID, x-porta-version, x-arca-app-secret, x-app-secret"
         }
       ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/admin",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
     }
   ]
 }
