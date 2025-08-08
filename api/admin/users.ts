@@ -417,10 +417,14 @@ async function handleCreateUser(
           last_name: last_name || '',
           role: role || 'user'
         });
-        console.log('[Users API] Welcome email sent:', email);
+        console.log('[Users API] Welcome email sent successfully:', email);
       } catch (emailError) {
-        console.warn('[Users API] Failed to send welcome email:', emailError);
-        // Continue without failing the user creation
+        console.error('[Users API] Failed to send welcome email:', {
+          email,
+          error: (emailError as Error)?.message || String(emailError),
+          stack: (emailError as Error)?.stack
+        });
+        // Continue without failing the user creation - email is optional
       }
     }
 
@@ -458,10 +462,14 @@ async function handleCreateUser(
     });
 
   } catch (error) {
-    console.error('[Users API] Create user error:', error);
+    console.error('[Users API] Create user error:', {
+      error: (error as Error)?.message || String(error),
+      stack: (error as Error)?.stack,
+      body: req.body
+    });
     return res.status(500).json({
       success: false,
-      error: 'Failed to create user'
+      error: `Failed to create user: ${(error as Error)?.message || String(error)}`
     });
   }
 }
@@ -481,13 +489,7 @@ async function sendWelcomeEmail(user: { email: string; first_name: string; last_
       },
       body: JSON.stringify({
         personalizations: [{
-          to: [{ email: user.email }],
-          substitutions: {
-            '{{first_name}}': user.first_name || 'User',
-            '{{email}}': user.email,
-            '{{role}}': user.role,
-            '{{app_name}}': 'Porta Gateway'
-          }
+          to: [{ email: user.email }]
         }],
         from: {
           email: 'noreply@porta-gateway.com',
@@ -537,8 +539,12 @@ The Porta Gateway Team`
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[SendGrid] Error response:', errorText);
-      throw new Error(`SendGrid API error: ${response.status}`);
+      console.error('[SendGrid] Error response:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText: errorText
+      });
+      throw new Error(`SendGrid API error: ${response.status} - ${errorText}`);
     }
 
     return true;
