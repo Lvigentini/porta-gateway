@@ -262,10 +262,16 @@ export default async function handler(
     });
 
   } catch (error) {
-    console.error('[Messaging API] Error:', error);
+    console.error('[Messaging API] Error:', {
+      error: (error as Error)?.message || String(error),
+      stack: (error as Error)?.stack,
+      method: req.method,
+      query: req.query,
+      body: req.body
+    });
     return res.status(500).json({ 
       success: false, 
-      error: 'Internal server error' 
+      error: `Internal server error: ${(error as Error)?.message || String(error)}` 
     });
   }
 }
@@ -276,7 +282,13 @@ async function handleSendEmail(
   admin: AdminSession
 ) {
   try {
+    console.log('[Messaging API] Send email request:', {
+      body: req.body,
+      hasApiKey: !!SENDGRID_API_KEY
+    });
+
     if (!SENDGRID_API_KEY) {
+      console.error('[Messaging API] SendGrid API key not configured');
       return res.status(500).json({
         success: false,
         error: 'SendGrid API key not configured'
@@ -344,8 +356,14 @@ async function handleSendEmail(
 
     if (!sendGridResponse.ok) {
       const errorText = await sendGridResponse.text();
-      console.error('[Messaging API] SendGrid error:', errorText);
-      throw new Error(`SendGrid API error: ${sendGridResponse.status}`);
+      console.error('[Messaging API] SendGrid error:', {
+        status: sendGridResponse.status,
+        statusText: sendGridResponse.statusText,
+        errorText: errorText,
+        template_id,
+        to
+      });
+      throw new Error(`SendGrid API error: ${sendGridResponse.status} - ${errorText}`);
     }
 
     // Log the email send
@@ -370,10 +388,14 @@ async function handleSendEmail(
     });
 
   } catch (error) {
-    console.error('[Messaging API] Send email error:', error);
+    console.error('[Messaging API] Send email error:', {
+      error: (error as Error)?.message || String(error),
+      stack: (error as Error)?.stack,
+      body: req.body
+    });
     return res.status(500).json({
       success: false,
-      error: 'Failed to send email'
+      error: `Failed to send email: ${(error as Error)?.message || String(error)}`
     });
   }
 }
