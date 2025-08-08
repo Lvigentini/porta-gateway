@@ -101,6 +101,11 @@ export default async function handler(
       return await handleGetUsers(res, supabaseUrl, supabaseAnonKey);
     }
 
+    if (req.method === 'POST') {
+      // Create new user
+      return await handleCreateUser(req, res, supabaseUrl, supabaseAnonKey, adminValidation.admin!);
+    }
+
     if (req.method === 'PUT') {
       // Update user role
       return await handleUpdateUser(req, res, supabaseUrl, supabaseAnonKey, adminValidation.admin!);
@@ -314,5 +319,231 @@ async function handleUpdateUser(
       success: false,
       error: 'Failed to update user role'
     });
+  }
+}
+
+async function handleCreateUser(
+  req: VercelRequest,
+  res: VercelResponse,
+  supabaseUrl: string,
+  supabaseAnonKey: string,
+  admin: AdminSession
+) {
+  try {
+    const { email, first_name, last_name, role, send_welcome_email } = req.body;
+
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Email is required'
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid email format'
+      });
+    }
+
+    // Validate role
+    const validRoles = ['admin', 'user', 'viewer', 'editor'];
+    if (role && !validRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid role. Must be one of: ${validRoles.join(', ')}`
+      });
+    }
+
+    // Check if user already exists
+    const existingUserResponse = await fetch(`${supabaseUrl}/rest/v1/users?email=eq.${encodeURIComponent(email)}`, {
+      method: 'GET',
+      headers: {
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (existingUserResponse.ok) {
+      const existingUsers = await existingUserResponse.json();
+      if (existingUsers.length > 0) {
+        return res.status(409).json({
+          success: false,
+          error: 'User with this email already exists'
+        });
+      }
+    }
+
+    const newUserData = {
+      email,
+      first_name: first_name || '',
+      last_name: last_name || '',
+      role: role || 'user',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const createResponse = await fetch(`${supabaseUrl}/rest/v1/users`, {
+      method: 'POST',
+      headers: {
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(newUserData)
+    });
+
+    if (!createResponse.ok) {
+      throw new Error(`Supabase error: ${createResponse.status}`);
+    }
+
+    const userData = await createResponse.json();
+    const createdUser = Array.isArray(userData) ? userData[0] : userData;
+
+    if (!createdUser) {
+      throw new Error('Failed to create user');
+    }
+
+    // Send welcome email if requested
+    if (send_welcome_email) {
+      try {
+        await sendWelcomeEmail({
+          email,
+          first_name: first_name || '',
+          last_name: last_name || '',
+          role: role || 'user'
+        });
+        console.log('[Users API] Welcome email sent:', email);
+      } catch (emailError) {
+        console.warn('[Users API] Failed to send welcome email:', emailError);
+        // Continue without failing the user creation
+      }
+    }
+
+    // Log the user creation
+    console.log('[Users API] User created:', {
+      timestamp: new Date().toISOString(),
+      admin_id: admin.adminId,
+      admin_email: admin.email,
+      created_user_id: createdUser.id,
+      created_user_email: email,
+      role: role || 'user',
+      welcome_email_sent: send_welcome_email,
+      action: 'user_create'
+    });
+
+    // Sanitize response
+    const sanitizedUser = {
+      id: createdUser.id,
+      email: createdUser.email,
+      first_name: createdUser.first_name,
+      last_name: createdUser.last_name,
+      full_name: createdUser.first_name && createdUser.last_name 
+        ? `${createdUser.first_name} ${createdUser.last_name}` 
+        : createdUser.email,
+      role: createdUser.role,
+      created_at: createdUser.created_at,
+      updated_at: createdUser.updated_at,
+      last_login_at: null
+    };
+
+    return res.status(201).json({
+      success: true,
+      user: sanitizedUser,
+      message: `User created successfully${send_welcome_email ? ' and welcome email sent' : ''}`
+    });
+
+  } catch (error) {
+    console.error('[Users API] Create user error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to create user'
+    });
+  }
+}
+
+// Welcome email function using SendGrid
+async function sendWelcomeEmail(user: { email: string; first_name: string; last_name: string; role: string }) {
+  try {
+    if (!process.env.SENDGRID_API_KEY) {
+      throw new Error('SendGrid API key not configured');
+    }
+
+    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        personalizations: [{
+          to: [{ email: user.email }],
+          substitutions: {
+            '{{first_name}}': user.first_name || 'User',
+            '{{email}}': user.email,
+            '{{role}}': user.role,
+            '{{app_name}}': 'Porta Gateway'
+          }
+        }],
+        from: {
+          email: 'noreply@porta-gateway.com',
+          name: 'Porta Gateway'
+        },
+        subject: 'Welcome to Porta Gateway!',
+        content: [
+          {
+            type: 'text/plain',
+            value: `Welcome to Porta Gateway!
+
+Hello ${user.first_name || 'User'},
+
+We're excited to have you join our platform. Your account has been created with the following details:
+
+Email: ${user.email}
+Role: ${user.role}
+
+You can now log in and start using our services.
+
+If you have any questions, please don't hesitate to contact our support team.
+
+Best regards,
+The Porta Gateway Team`
+          },
+          {
+            type: 'text/html',
+            value: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #1f2937;">Welcome to Porta Gateway!</h1>
+                <p>Hello ${user.first_name || 'User'},</p>
+                <p>We're excited to have you join our platform. Your account has been created with the following details:</p>
+                <ul>
+                  <li><strong>Email:</strong> ${user.email}</li>
+                  <li><strong>Role:</strong> ${user.role}</li>
+                </ul>
+                <p>You can now log in and start using our services.</p>
+                <p>If you have any questions, please don't hesitate to contact our support team.</p>
+                <p>Best regards,<br>The Porta Gateway Team</p>
+              </div>
+            `
+          }
+        ],
+        categories: ['welcome', 'porta-gateway']
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[SendGrid] Error response:', errorText);
+      throw new Error(`SendGrid API error: ${response.status}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[SendGrid] Welcome email error:', error);
+    throw error;
   }
 }

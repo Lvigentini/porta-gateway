@@ -1,4 +1,4 @@
-# Porta Gateway v1.3.0
+# Porta Gateway v1.5.0
 
 A secure authentication gateway for the ARCA (Academic Resource Curation Archive) ecosystem, built with React, TypeScript, and Vite. Deployed on Vercel with Supabase backend integration.
 
@@ -9,6 +9,10 @@ Porta Gateway serves as the central authentication service for ARCA applications
 - **Centralized Authentication**: Single sign-on for multiple ARCA apps
 - **ARCA App Integration**: Secure API endpoints for authentication requests
 - **Supabase Integration**: Database-backed user management and authentication
+- **Admin Dashboard**: Complete user and application management interface
+- **Messaging System**: SendGrid-powered email notifications with template management
+- **User Creation**: Admin tools for creating users with automatic welcome emails
+- **Role Management**: Granular role assignment with email notifications
 - **Production Ready**: Deployed on Vercel with comprehensive error handling
 
 ## Quick Start
@@ -47,6 +51,7 @@ VITE_ARCA_APP_SECRET=your_arca_app_secret_here
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 VITE_JWT_SECRET=your_jwt_secret_for_token_generation
+SENDGRID_API_KEY=your_sendgrid_api_key_here
 ```
 
 ### Vercel Environment Variables
@@ -57,6 +62,7 @@ For production deployment, set these in your Vercel project settings:
 - `VITE_SUPABASE_URL`: Your Supabase project URL
 - `VITE_SUPABASE_ANON_KEY`: Your Supabase anonymous key
 - `VITE_JWT_SECRET`: Secret for JWT token generation
+- `SENDGRID_API_KEY`: SendGrid API key for email functionality (messaging system)
 
 ## How We Got This Working
 
@@ -249,6 +255,8 @@ porta-gateway/
 
 ## Version History
 
+- **v1.5.0**: Added user creation and comprehensive messaging system with SendGrid integration
+- **v1.4.0**: Complete roles & ACL management system with app assignments
 - **v1.3.0**: Fixed Supabase authentication, resolved cache issues, production ready
 - **v1.2.0**: Added version management and UI improvements  
 - **v1.0.0**: Initial release with basic authentication framework

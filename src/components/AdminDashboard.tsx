@@ -66,7 +66,7 @@ export function AdminDashboard() {
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [adminToken, setAdminToken] = useState<string>('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [activeTab, setActiveTab] = useState<'apps' | 'users' | 'roles'>('apps');
+  const [activeTab, setActiveTab] = useState<'apps' | 'users' | 'roles' | 'messaging'>('apps');
   
   // Login state
   const [loginCredentials, setLoginCredentials] = useState({ email: '', password: '' });
@@ -84,12 +84,26 @@ export function AdminDashboard() {
   const [usersWithAssignments, setUsersWithAssignments] = useState<UserWithAssignments[]>([]);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<string>('');
+  const [showAddUserForm, setShowAddUserForm] = useState(false);
+  const [newUser, setNewUser] = useState({
+    email: '',
+    first_name: '',
+    last_name: '',
+    role: 'user',
+    send_welcome_email: true
+  });
 
   // Roles & ACL state
   const [rolesView, setRolesView] = useState<'app' | 'user'>('app');
   const [selectedApp, setSelectedApp] = useState<string>('');
   const [selectedUser, setSelectedUser] = useState<string>('');
   const [assignmentRoles, setAssignmentRoles] = useState<{ [key: string]: string }>({});
+  
+  // Messaging state
+  const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [emailRecipient, setEmailRecipient] = useState<string>('');
+  const [emailVariables, setEmailVariables] = useState<Record<string, string>>({});
   
   const [newApp, setNewApp] = useState<AppRegistrationForm>({
     app_name: '',
@@ -122,6 +136,13 @@ export function AdminDashboard() {
       }
     }
   }, []);
+
+  // Auto-load email templates when messaging tab is accessed
+  useEffect(() => {
+    if (activeTab === 'messaging' && emailTemplates.length === 0 && adminToken) {
+      loadEmailTemplates();
+    }
+  }, [activeTab, adminToken]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -338,6 +359,50 @@ export function AdminDashboard() {
     setEditingRole('');
   };
 
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`
+        },
+        body: JSON.stringify(newUser)
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccess(`User created successfully! ${newUser.send_welcome_email ? 'Welcome email sent.' : ''}`);
+        setShowAddUserForm(false);
+        setNewUser({
+          email: '',
+          first_name: '',
+          last_name: '',
+          role: 'user',
+          send_welcome_email: true
+        });
+        loadUsers(); // Reload users list
+      } else {
+        setError(data.error || 'Failed to create user');
+        
+        if (data.error?.includes('expired')) {
+          handleLogout();
+        }
+      }
+    } catch (error) {
+      setError('Error creating user');
+      console.error('Add user error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleAddApp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -492,6 +557,28 @@ export function AdminDashboard() {
       
       if (data.success) {
         setSuccess(data.message);
+        
+        // Send role assignment notification email
+        try {
+          const user = users.find(u => u.id === userId);
+          const app = apps.find(a => a.app_name === appName);
+          
+          if (user && app) {
+            const emailVariables = {
+              first_name: user.first_name || 'User',
+              app_name: 'Porta Gateway',
+              role_name: roleName,
+              app_display_name: app.app_display_name,
+              admin_email: adminUser?.email || 'Admin'
+            };
+            
+            await sendEmail(user.email, 'role-assigned', emailVariables);
+          }
+        } catch (emailError) {
+          console.warn('Failed to send role assignment notification:', emailError);
+          // Don't fail the role assignment if email fails
+        }
+        
         // Reload users to reflect the changes
         loadUsers();
       } else {
@@ -547,6 +634,92 @@ export function AdminDashboard() {
     } catch (error) {
       setError('Error revoking role');
       console.error('Revoke role error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadEmailTemplates = async () => {
+    try {
+      const response = await fetch('/api/admin/messaging?action=templates', {
+        headers: {
+          'Authorization': `Bearer ${adminToken}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setEmailTemplates(data.templates || []);
+      } else {
+        setError(data.error || 'Failed to load email templates');
+      }
+    } catch (error) {
+      setError('Error loading email templates');
+      console.error('Load templates error:', error);
+    }
+  };
+
+  const sendEmail = async (to: string, templateId: string, variables: Record<string, string>) => {
+    setError('');
+    setSuccess('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/admin/messaging?action=send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({
+          to,
+          template_id: templateId,
+          variables
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccess(`Email sent successfully to ${to}`);
+        setEmailRecipient('');
+        setEmailVariables({});
+        setSelectedTemplate('');
+      } else {
+        setError(data.error || 'Failed to send email');
+      }
+    } catch (error) {
+      setError('Error sending email');
+      console.error('Send email error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const testSendGridConnection = async () => {
+    setError('');
+    setSuccess('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/admin/messaging?action=test', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${adminToken}`
+        }
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccess('SendGrid connection test successful!');
+      } else {
+        setError(data.error || 'SendGrid connection test failed');
+      }
+    } catch (error) {
+      setError('Error testing SendGrid connection');
+      console.error('SendGrid test error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -797,10 +970,25 @@ export function AdminDashboard() {
             borderBottom: activeTab === 'roles' ? '2px solid #3b82f6' : '2px solid transparent',
             color: activeTab === 'roles' ? '#3b82f6' : '#6b7280',
             fontWeight: '500',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            marginRight: '1rem'
           }}
         >
           🔐 Roles & ACL
+        </button>
+        <button
+          onClick={() => setActiveTab('messaging')}
+          style={{
+            padding: '0.75rem 1.5rem',
+            border: 'none',
+            background: 'none',
+            borderBottom: activeTab === 'messaging' ? '2px solid #3b82f6' : '2px solid transparent',
+            color: activeTab === 'messaging' ? '#3b82f6' : '#6b7280',
+            fontWeight: '500',
+            cursor: 'pointer'
+          }}
+        >
+          📧 Messaging
         </button>
       </div>
 
@@ -1182,24 +1370,238 @@ export function AdminDashboard() {
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
             <h3 style={{ margin: 0 }}>User Management ({users.length} users)</h3>
-            <button
-              onClick={() => loadUsers()}
-              disabled={isLoading}
-              style={{
-                backgroundColor: '#6b7280',
-                color: 'white',
-                padding: '0.75rem 1.5rem',
-                borderRadius: '6px',
-                border: 'none',
-                fontSize: '1rem',
-                fontWeight: '500',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                opacity: isLoading ? 0.6 : 1
-              }}
-            >
-              🔄 Refresh Users
-            </button>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                onClick={() => setShowAddUserForm(true)}
+                style={{
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '1rem',
+                  fontWeight: '500',
+                  cursor: 'pointer'
+                }}
+              >
+                ➕ Add User
+              </button>
+              <button
+                onClick={() => loadUsers()}
+                disabled={isLoading}
+                style={{
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '1rem',
+                  fontWeight: '500',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                  opacity: isLoading ? 0.6 : 1
+                }}
+              >
+                🔄 Refresh Users
+              </button>
+            </div>
           </div>
+
+          {/* Add User Form */}
+          {showAddUserForm && (
+            <div style={{ 
+              marginBottom: '2rem',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '2rem'
+            }}>
+              <h4 style={{ margin: '0 0 1.5rem 0', color: '#1f2937' }}>Add New User</h4>
+              
+              <form onSubmit={handleAddUser}>
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: '1fr 1fr', 
+                  gap: '1rem',
+                  marginBottom: '1rem'
+                }}>
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '0.5rem', 
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#374151'
+                    }}>
+                      First Name:
+                    </label>
+                    <input
+                      type="text"
+                      value={newUser.first_name}
+                      onChange={(e) => setNewUser({ ...newUser, first_name: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        fontSize: '1rem'
+                      }}
+                      placeholder="John"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '0.5rem', 
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#374151'
+                    }}>
+                      Last Name:
+                    </label>
+                    <input
+                      type="text"
+                      value={newUser.last_name}
+                      onChange={(e) => setNewUser({ ...newUser, last_name: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        fontSize: '1rem'
+                      }}
+                      placeholder="Doe"
+                    />
+                  </div>
+                </div>
+                
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151'
+                  }}>
+                    Email Address: *
+                  </label>
+                  <input
+                    type="email"
+                    value={newUser.email}
+                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      fontSize: '1rem'
+                    }}
+                    placeholder="john@example.com"
+                    required
+                  />
+                </div>
+                
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: '1fr 1fr', 
+                  gap: '1rem',
+                  marginBottom: '1.5rem'
+                }}>
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '0.5rem', 
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#374151'
+                    }}>
+                      System Role:
+                    </label>
+                    <select
+                      value={newUser.role}
+                      onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        fontSize: '1rem'
+                      }}
+                    >
+                      <option value="user">User</option>
+                      <option value="admin">Admin</option>
+                      <option value="editor">Editor</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                  </div>
+                  
+                  <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                    <label style={{ 
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#374151'
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={newUser.send_welcome_email}
+                        onChange={(e) => setNewUser({ ...newUser, send_welcome_email: e.target.checked })}
+                        style={{ marginRight: '0.5rem' }}
+                      />
+                      Send welcome email
+                    </label>
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button
+                    type="submit"
+                    disabled={isLoading || !newUser.email}
+                    style={{
+                      backgroundColor: isLoading || !newUser.email ? '#9ca3af' : '#10b981',
+                      color: 'white',
+                      padding: '0.75rem 1.5rem',
+                      borderRadius: '6px',
+                      border: 'none',
+                      fontSize: '1rem',
+                      fontWeight: '500',
+                      cursor: isLoading || !newUser.email ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {isLoading ? 'Creating User...' : '➕ Create User'}
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddUserForm(false);
+                      setNewUser({
+                        email: '',
+                        first_name: '',
+                        last_name: '',
+                        role: 'user',
+                        send_welcome_email: true
+                      });
+                    }}
+                    style={{
+                      backgroundColor: '#6b7280',
+                      color: 'white',
+                      padding: '0.75rem 1.5rem',
+                      borderRadius: '6px',
+                      border: 'none',
+                      fontSize: '1rem',
+                      fontWeight: '500',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
 
           {users.length === 0 && !isLoading ? (
             <div style={{
@@ -1893,6 +2295,338 @@ export function AdminDashboard() {
                   </p>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'messaging' && (
+        <div>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            marginBottom: '1.5rem' 
+          }}>
+            <h2 style={{ margin: 0, color: '#1f2937' }}>📧 Messaging System</h2>
+            
+            <button
+              onClick={() => testSendGridConnection()}
+              disabled={isLoading}
+              style={{
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                padding: '0.75rem 1.5rem',
+                borderRadius: '6px',
+                border: 'none',
+                fontSize: '1rem',
+                fontWeight: '500',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                opacity: isLoading ? 0.6 : 1
+              }}
+            >
+              🔍 Test SendGrid Connection
+            </button>
+          </div>
+
+          {/* Load templates when messaging tab is accessed */}
+          {emailTemplates.length === 0 && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <button
+                onClick={loadEmailTemplates}
+                disabled={isLoading}
+                style={{
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '1rem',
+                  fontWeight: '500',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                  opacity: isLoading ? 0.6 : 1
+                }}
+              >
+                📄 Load Email Templates
+              </button>
+            </div>
+          )}
+
+          {/* Email Templates Section */}
+          {emailTemplates.length > 0 && (
+            <div>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: '1fr 1fr', 
+                gap: '2rem',
+                marginBottom: '2rem'
+              }}>
+                {/* Template List */}
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '1.5rem'
+                }}>
+                  <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Available Templates</h3>
+                  
+                  <div style={{ display: 'grid', gap: '0.75rem' }}>
+                    {emailTemplates.map(template => (
+                      <div
+                        key={template.id}
+                        onClick={() => setSelectedTemplate(template.id)}
+                        style={{
+                          padding: '1rem',
+                          border: selectedTemplate === template.id ? '2px solid #3b82f6' : '1px solid #d1d5db',
+                          borderRadius: '6px',
+                          background: selectedTemplate === template.id ? '#eff6ff' : '#ffffff',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                          <div>
+                            <h4 style={{ margin: '0 0 0.25rem 0', color: '#1f2937', fontSize: '0.875rem' }}>
+                              {template.name}
+                            </h4>
+                            <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', color: '#6b7280' }}>
+                              Subject: {template.subject}
+                            </p>
+                          </div>
+                          <span style={{
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '4px',
+                            fontSize: '0.625rem',
+                            fontWeight: '500',
+                            backgroundColor: template.category === 'welcome' ? '#dcfce7' : 
+                                           template.category === 'notification' ? '#fef3c7' : 
+                                           template.category === 'system' ? '#fee2e2' : '#f3f4f6',
+                            color: template.category === 'welcome' ? '#16a34a' : 
+                                   template.category === 'notification' ? '#d97706' : 
+                                   template.category === 'system' ? '#dc2626' : '#6b7280'
+                          }}>
+                            {template.category.toUpperCase()}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                          Variables: {template.variables.join(', ')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Send Email Form */}
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '1.5rem'
+                }}>
+                  <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Send Email</h3>
+                  
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    if (selectedTemplate && emailRecipient) {
+                      sendEmail(emailRecipient, selectedTemplate, emailVariables);
+                    }
+                  }}>
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ 
+                        display: 'block', 
+                        marginBottom: '0.5rem', 
+                        fontSize: '0.875rem',
+                        fontWeight: '500',
+                        color: '#374151'
+                      }}>
+                        Recipient Email:
+                      </label>
+                      <input
+                        type="email"
+                        value={emailRecipient}
+                        onChange={(e) => setEmailRecipient(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '6px',
+                          fontSize: '1rem'
+                        }}
+                        placeholder="user@example.com"
+                        required
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ 
+                        display: 'block', 
+                        marginBottom: '0.5rem', 
+                        fontSize: '0.875rem',
+                        fontWeight: '500',
+                        color: '#374151'
+                      }}>
+                        Selected Template:
+                      </label>
+                      <select
+                        value={selectedTemplate}
+                        onChange={(e) => setSelectedTemplate(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '6px',
+                          fontSize: '1rem'
+                        }}
+                        required
+                      >
+                        <option value="">Choose a template...</option>
+                        {emailTemplates.map(template => (
+                          <option key={template.id} value={template.id}>
+                            {template.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Template Variables */}
+                    {selectedTemplate && (() => {
+                      const template = emailTemplates.find(t => t.id === selectedTemplate);
+                      return template && template.variables.length > 0 ? (
+                        <div style={{ marginBottom: '1.5rem' }}>
+                          <label style={{ 
+                            display: 'block', 
+                            marginBottom: '0.75rem', 
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            color: '#374151'
+                          }}>
+                            Template Variables:
+                          </label>
+                          <div style={{ display: 'grid', gap: '0.75rem' }}>
+                            {template.variables.map((variable: string) => (
+                              <div key={variable}>
+                                <label style={{ 
+                                  display: 'block', 
+                                  marginBottom: '0.25rem', 
+                                  fontSize: '0.75rem',
+                                  fontWeight: '500',
+                                  color: '#6b7280'
+                                }}>
+                                  {variable}:
+                                </label>
+                                <input
+                                  type="text"
+                                  value={emailVariables[variable] || ''}
+                                  onChange={(e) => setEmailVariables(prev => ({
+                                    ...prev,
+                                    [variable]: e.target.value
+                                  }))}
+                                  style={{
+                                    width: '100%',
+                                    padding: '0.5rem',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '4px',
+                                    fontSize: '0.875rem'
+                                  }}
+                                  placeholder={`Enter ${variable}`}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null;
+                    })()}
+
+                    <button
+                      type="submit"
+                      disabled={!selectedTemplate || !emailRecipient || isLoading}
+                      style={{
+                        backgroundColor: !selectedTemplate || !emailRecipient || isLoading ? '#9ca3af' : '#3b82f6',
+                        color: 'white',
+                        padding: '0.75rem 1.5rem',
+                        borderRadius: '6px',
+                        border: 'none',
+                        fontSize: '1rem',
+                        fontWeight: '500',
+                        cursor: !selectedTemplate || !emailRecipient || isLoading ? 'not-allowed' : 'pointer',
+                        width: '100%'
+                      }}
+                    >
+                      {isLoading ? '📤 Sending Email...' : '📤 Send Email'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              {/* Template Preview */}
+              {selectedTemplate && (() => {
+                const template = emailTemplates.find(t => t.id === selectedTemplate);
+                return template ? (
+                  <div style={{
+                    background: '#ffffff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    padding: '1.5rem'
+                  }}>
+                    <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#1f2937' }}>
+                      Template Preview: {template.name}
+                    </h3>
+                    
+                    <div style={{ display: 'grid', gap: '1rem' }}>
+                      <div>
+                        <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#6b7280' }}>
+                          Subject:
+                        </h4>
+                        <div style={{
+                          padding: '0.75rem',
+                          background: '#f9fafb',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '4px',
+                          fontSize: '0.875rem',
+                          fontFamily: 'monospace'
+                        }}>
+                          {template.subject}
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#6b7280' }}>
+                          HTML Content (preview):
+                        </h4>
+                        <div style={{
+                          padding: '1rem',
+                          background: '#f9fafb',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '4px',
+                          maxHeight: '200px',
+                          overflow: 'auto',
+                          fontSize: '0.75rem',
+                          fontFamily: 'monospace',
+                          whiteSpace: 'pre-wrap'
+                        }}>
+                          {template.html_content}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+            </div>
+          )}
+
+          {/* No templates loaded state */}
+          {emailTemplates.length === 0 && (
+            <div style={{
+              textAlign: 'center',
+              color: '#6b7280',
+              padding: '3rem',
+              border: '2px dashed #d1d5db',
+              borderRadius: '8px'
+            }}>
+              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📧</div>
+              <p style={{ margin: 0, fontSize: '0.875rem' }}>
+                Click "Load Email Templates" to start using the messaging system
+              </p>
             </div>
           )}
         </div>
