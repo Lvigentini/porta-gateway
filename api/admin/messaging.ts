@@ -300,7 +300,7 @@ async function handleSendEmail(
       template_id, 
       variables = {}, 
       from_name = 'Porta Gateway',
-      from_email = 'noreply@porta-gateway.com' 
+      from_email = process.env.SENDGRID_FROM_EMAIL || 'l.vigentini@gmail.com' 
     } = req.body;
 
     if (!to || !template_id) {
@@ -474,7 +474,7 @@ export async function sendTemplateEmail(
           to: [{ email: to }]
         }],
         from: {
-          email: 'noreply@porta-gateway.com',
+          email: process.env.SENDGRID_FROM_EMAIL || 'l.vigentini@gmail.com',
           name: 'Porta Gateway'
         },
         subject: subject,

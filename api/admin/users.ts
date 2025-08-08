@@ -492,7 +492,7 @@ async function sendWelcomeEmail(user: { email: string; first_name: string; last_
           to: [{ email: user.email }]
         }],
         from: {
-          email: 'noreply@porta-gateway.com',
+          email: process.env.SENDGRID_FROM_EMAIL || 'l.vigentini@gmail.com',
           name: 'Porta Gateway'
         },
         subject: 'Welcome to Porta Gateway!',
