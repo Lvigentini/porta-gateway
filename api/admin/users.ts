@@ -126,7 +126,8 @@ async function handleGetUsers(
   supabaseAnonKey: string
 ) {
   try {
-    const response = await fetch(`${supabaseUrl}/rest/v1/users?order=created_at.desc`, {
+    // First, get all users
+    const usersResponse = await fetch(`${supabaseUrl}/rest/v1/users?order=created_at.desc`, {
       method: 'GET',
       headers: {
         'apikey': supabaseAnonKey,
@@ -135,13 +136,43 @@ async function handleGetUsers(
       }
     });
 
-    if (!response.ok) {
-      throw new Error(`Supabase error: ${response.status}`);
+    if (!usersResponse.ok) {
+      throw new Error(`Supabase users error: ${usersResponse.status}`);
     }
 
-    const users = await response.json();
+    const users = await usersResponse.json();
+
+    // Get user app role assignments with app and role details
+    const userAppRolesResponse = await fetch(`${supabaseUrl}/rest/v1/user_app_roles?select=user_id,app_name,role_name,is_active,granted_at,app_roles(role_label),registered_apps(app_display_name)&is_active=eq.true`, {
+      method: 'GET',
+      headers: {
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    let userAppRoles = [];
+    if (userAppRolesResponse.ok) {
+      userAppRoles = await userAppRolesResponse.json();
+    }
+
+    // Build app assignments map by user_id
+    const appAssignmentsByUser: { [userId: string]: any[] } = {};
+    userAppRoles.forEach((assignment: any) => {
+      if (!appAssignmentsByUser[assignment.user_id]) {
+        appAssignmentsByUser[assignment.user_id] = [];
+      }
+      appAssignmentsByUser[assignment.user_id].push({
+        app_name: assignment.app_name,
+        app_display_name: assignment.registered_apps?.app_display_name || assignment.app_name,
+        role_name: assignment.role_name,
+        role_label: assignment.app_roles?.role_label || assignment.role_name,
+        granted_at: assignment.granted_at
+      });
+    });
     
-    // Remove sensitive fields and add computed fields
+    // Remove sensitive fields and add computed fields + app assignments
     const sanitizedUsers = users.map((user: any) => ({
       id: user.id,
       email: user.email,
@@ -153,7 +184,8 @@ async function handleGetUsers(
       role: user.role || 'user',
       created_at: user.created_at,
       updated_at: user.updated_at,
-      last_login_at: user.last_login_at
+      last_login_at: user.last_login_at,
+      app_assignments: appAssignmentsByUser[user.id] || []
     }));
 
     return res.status(200).json({

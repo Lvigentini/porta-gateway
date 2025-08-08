@@ -33,6 +33,16 @@ export function EmergencyAdmin({ onEmergencyLogin }: EmergencyAdminProps) {
       }
     } catch (error) {
       console.error('Failed to check system health:', error);
+      
+      // Provide mock status for development mode
+      if (import.meta.env.DEV) {
+        setSystemStatus({
+          overallStatus: 'healthy (dev mode)',
+          emergencyModeRecommended: false,
+          recentIssues: [],
+          recommendations: ['Development mode - API routes unavailable']
+        });
+      }
     }
   };
 
@@ -46,6 +56,23 @@ export function EmergencyAdmin({ onEmergencyLogin }: EmergencyAdminProps) {
       }
     } catch (error) {
       console.error('Failed to run diagnostics:', error);
+      
+      // Provide mock diagnostics for development mode
+      if (import.meta.env.DEV) {
+        setDiagnostics({
+          environment: {
+            hasSupabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
+            hasSupabaseKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
+            hasJwtSecret: !!import.meta.env.VITE_JWT_SECRET,
+            hasArcaSecret: !!import.meta.env.VITE_ARCA_APP_SECRET
+          },
+          connectivity: {
+            supabase: 'untested (dev mode)',
+            internet: 'available'
+          },
+          mode: 'development'
+        });
+      }
     }
   };
 
@@ -81,10 +108,10 @@ export function EmergencyAdmin({ onEmergencyLogin }: EmergencyAdminProps) {
     }}>
       <div style={{ marginBottom: '2rem' }}>
         <h1 style={{ color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          🚨 Emergency Admin Access
+          🛠️ Super User Toolkit
         </h1>
         <p style={{ color: '#6b7280' }}>
-          Use this interface only when normal authentication is unavailable
+          Advanced system recovery and administration tools
         </p>
       </div>
 

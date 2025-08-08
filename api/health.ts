@@ -114,7 +114,7 @@ export default async function handler(
     return res.status(200).json({
       status,
       timestamp: new Date().toISOString(),
-      version: '1.3.0',
+      version: '1.4.1',
       message: 'Porta Gateway (React + Vite)',
       environment: {
         hasSupabaseUrl: !!process.env.VITE_SUPABASE_URL,

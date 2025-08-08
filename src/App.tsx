@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react';
-import { AuthService } from './services/AuthService';
-import { handleAuth } from './api/auth';
 import { APP_VERSION, BUILD_DATE } from './constants/version';
 import { EmergencyAdmin } from './components/EmergencyAdmin';
 import { AdminDashboard } from './components/AdminDashboard';
 
 function App() {
   const [status, setStatus] = useState<string>('Loading...');
-  const [lastTest, setLastTest] = useState<string>('');
+  const [lastCheck, setLastCheck] = useState<string>('');
   const [showEmergencyAccess, setShowEmergencyAccess] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [systemHealth, setSystemHealth] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     // Set dynamic page title
@@ -22,29 +21,54 @@ function App() {
       return;
     }
     
-    // Debug environment variables
-    console.log('🔧 Environment check:', {
-      hasSupabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
-      hasSupabaseKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
-      supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-      isDev: import.meta.env.DEV
-    });
+    // Check for existing admin session
+    const savedToken = localStorage.getItem('porta_admin_token');
+    if (savedToken) {
+      setIsAdmin(true);
+    }
     
     checkHealth();
-    
-    // Set up API route handlers for development
-    setupAPIRoutes();
   }, []);
 
   const checkHealth = async () => {
+    // Check if we're in development mode (Vite dev server) first
+    const isDev = import.meta.env.DEV;
+    
+    if (isDev) {
+      // Skip API call in development mode and use mock data immediately
+      console.log('Development mode: Using mock health data');
+      setStatus('healthy (dev mode)');
+      setLastCheck(new Date().toISOString());
+      setSystemHealth({
+        status: 'healthy (dev mode)',
+        timestamp: new Date().toISOString(),
+        version: APP_VERSION,
+        environment: {
+          hasSupabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
+          hasSupabaseKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
+          hasJwtSecret: !!import.meta.env.VITE_JWT_SECRET,
+          hasArcaSecret: !!import.meta.env.VITE_ARCA_APP_SECRET
+        },
+        systemHealth: {
+          overallStatus: 'healthy',
+          emergencyModeRecommended: false
+        }
+      });
+      return;
+    }
+
+    // Production mode - make actual API call
     try {
-      console.log('🏥 checkHealth: Starting health check...');
       const response = await fetch('/api/health');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const health = await response.json();
-      console.log('🏥 checkHealth: Health result:', health);
       
       setStatus(health.status);
-      setLastTest(health.timestamp);
+      setLastCheck(health.timestamp);
       setSystemHealth(health);
       
       // Show emergency access if system is in emergency mode
@@ -52,217 +76,11 @@ function App() {
         setShowEmergencyAccess(true);
       }
     } catch (error) {
-      console.error('🏥 checkHealth: Error:', error);
-      setStatus('Error checking health: ' + (error instanceof Error ? error.message : 'Unknown error'));
-      setShowEmergencyAccess(true); // Show emergency access if health check fails
-    }
-  };
-
-  const setupAPIRoutes = () => {
-    // In production, Vercel will handle routing
-    // This is for development testing
-    if (import.meta.env.DEV) {
-      console.log('Porta Gateway API endpoints available:');
-      console.log('- POST /api/auth/login');
-      console.log('- GET /api/health');
-    }
-  };
-
-  const testLogin = async () => {
-    console.log('BUTTON CLICKED - testLogin function called');
-    console.log('🚨🚨🚨 THIS IS THE NEW VERSION WITH DEBUG CODE 🚨🚨🚨');
-    try {
-      console.log('🔥 Starting test login...');
+      console.error('Health check error:', error);
+      setStatus('Error checking health');
       
-      // Debug environment variable
-      console.log('🔐 VITE_ARCA_APP_SECRET value:', import.meta.env.VITE_ARCA_APP_SECRET);
-      console.log('🔐 Expected value: e636839fd8ad07bfe5a85da0226f4ed133a5810e42e60221c4b16f40346549f0');
-      
-      const credentials = {
-        email: 'admin@arca.dev',
-        password: 'admin123',
-        app: 'arca',
-        redirect_url: 'https://arca-alpha.vercel.app',
-        app_secret: import.meta.env.VITE_ARCA_APP_SECRET
-      };
-      
-      console.log('📤 Sending credentials with app_secret:', credentials);
-      
-      // Check if we're running locally or in production
-      const isLocal = import.meta.env.DEV;
-      console.log('🔥 Running locally:', isLocal);
-      
-      let response: Response;
-      
-      if (isLocal) {
-        // LOCAL: Use client-side auth handler
-        console.log('🚀 Making local auth request...');
-        const testRequest = new Request('http://localhost/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(credentials)
-        });
-        response = await handleAuth(testRequest);
-      } else {
-        // PRODUCTION: Call actual Vercel function
-        console.log('🚀 Making production API request to /api/auth/login...');
-        response = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(credentials)
-        });
-      }
-      
-      console.log('📨 Response status:', response.status);
-      console.log('📨 Response headers:', Object.fromEntries(response.headers.entries()));
-      
-      const result = await response.json();
-      console.log('📦 Full response body:', result);
-      
-      if (response.status >= 400) {
-        console.error('🚨 API Error Response:', result);
-      }
-      
-      if (result.success && result.token) {
-        console.log('✅ Login successful!');
-        alert('Test login successful! Token: ' + result.token.substring(0, 20) + '...');
-      } else {
-        console.log('❌ Login failed:', result.error || 'Unknown error');
-        alert('Test login failed: ' + (result.error || 'Unknown error'));
-      }
-    } catch (error) {
-      console.error('💥 Test login error:', error);
-      console.error('💥 Error stack:', error instanceof Error ? error.stack : 'No stack');
-      alert('Test error: ' + error);
-    }
-  };
-
-  const testLogout = async () => {
-    try {
-      console.log('🚪 Starting test logout...');
-      
-      const result = await AuthService.logout();
-      
-      if (result.success) {
-        console.log('✅ Logout successful!');
-        alert('Test logout successful!');
-        // Refresh the status after logout
-        await checkHealth();
-      } else {
-        console.log('❌ Logout failed:', result.error);
-        alert('Test logout failed: ' + (result.error || 'Unknown error'));
-      }
-    } catch (error) {
-      console.error('💥 Test logout error:', error);
-      alert('Test logout error: ' + error);
-    }
-  };
-
-  const testSupabaseDirect = async () => {
-    try {
-      console.log('🧪 Testing Supabase direct connection...');
-      
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      
-      console.log('🧪 Environment variables:', {
-        hasUrl: !!supabaseUrl,
-        hasKey: !!supabaseKey,
-        url: supabaseUrl
-      });
-
-      // Test 1: Direct Supabase auth
-      console.log('🧪 Step 1: Testing Supabase auth API...');
-      const authResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-        method: 'POST',
-        headers: {
-          'apikey': supabaseKey,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          email: 'admin@arca.dev',
-          password: 'admin123'
-        })
-      });
-
-      const authResult = await authResponse.json();
-      console.log('🧪 Auth API result:', {
-        status: authResponse.status,
-        hasAccessToken: !!authResult.access_token,
-        hasUser: !!authResult.user,
-        userId: authResult.user?.id
-      });
-
-      if (!authResult.access_token) {
-        alert('❌ Supabase auth failed: ' + JSON.stringify(authResult));
-        return;
-      }
-
-      // Test 2: User profile lookup
-      console.log('🧪 Step 2: Testing user profile lookup...');
-      const profileResponse = await fetch(`${supabaseUrl}/rest/v1/users?id=eq.${authResult.user.id}`, {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${authResult.access_token}`
-        }
-      });
-
-      const profileResult = await profileResponse.json();
-      console.log('🧪 Profile API result:', {
-        status: profileResponse.status,
-        userCount: Array.isArray(profileResult) ? profileResult.length : 0,
-        user: profileResult[0]
-      });
-
-      if (profileResult.length > 0) {
-        alert('✅ Supabase direct test successful!\nUser: ' + profileResult[0].email + '\nRole: ' + profileResult[0].role);
-      } else {
-        alert('❌ User profile not found');
-      }
-
-    } catch (error) {
-      console.error('🧪 Supabase direct test error:', error);
-      alert('❌ Direct test error: ' + error);
-    }
-  };
-
-  const testProductionHealth = async () => {
-    try {
-      console.log('🏥 Testing production health endpoint...');
-      
-      const response = await fetch('/api/health');
-      const result = await response.json();
-      
-      console.log('🏥 Health response:', result);
-      
-      if (response.ok) {
-        alert('✅ Production health check successful!\nStatus: ' + result.status);
-      } else {
-        alert('❌ Production health check failed: ' + result.error);
-      }
-    } catch (error) {
-      console.error('🏥 Health check error:', error);
-      alert('❌ Health check error: ' + error);
-    }
-  };
-
-  const testSimpleEndpoint = async () => {
-    try {
-      console.log('🧪 Testing simple API endpoint...');
-      
-      const response = await fetch('/api/test-simple');
-      const result = await response.json();
-      
-      console.log('🧪 Simple API response:', result);
-      
-      if (response.ok) {
-        alert('✅ Simple API works!\nEnvironment variables found: ' + result.environment.envVars.join(', '));
-      } else {
-        alert('❌ Simple API failed: ' + result.error);
-      }
-    } catch (error) {
-      console.error('🧪 Simple API error:', error);
-      alert('❌ Simple API error: ' + error);
+      // Don't automatically show emergency access on health check failure
+      // Let users manually access it via the SU Toolkit card
     }
   };
 
@@ -279,7 +97,7 @@ function App() {
       if (result.success) {
         alert(`Emergency login successful!\nToken: ${result.token.substring(0, 20)}...\nExpires: ${result.expiresAt}`);
         setShowEmergencyAccess(false);
-        checkHealth(); // Refresh health status
+        checkHealth();
       } else {
         throw new Error(result.error || 'Emergency login failed');
       }
@@ -289,8 +107,10 @@ function App() {
     }
   };
 
-  const toggleEmergencyAccess = () => {
-    setShowEmergencyAccess(!showEmergencyAccess);
+  const handleAdminLogout = () => {
+    setIsAdmin(false);
+    localStorage.removeItem('porta_admin_token');
+    localStorage.removeItem('porta_admin_user');
   };
 
   // Show admin dashboard if on /admin route
@@ -298,234 +118,220 @@ function App() {
     return <AdminDashboard />;
   }
 
-  // Show emergency access interface if requested or if system is unhealthy
+  // Show emergency access interface if requested
   if (showEmergencyAccess) {
     return <EmergencyAdmin onEmergencyLogin={handleEmergencyLogin} />;
   }
 
+  const getStatusInfo = () => {
+    if (status.includes('healthy')) return { icon: '✅', colorClass: 'text-green-600' };
+    if (status.includes('degraded')) return { icon: '⚠️', colorClass: 'text-yellow-600' };
+    return { icon: '❌', colorClass: 'text-red-600' };
+  };
+
   return (
-    <div style={{ 
-      padding: '2rem', 
-      fontFamily: 'system-ui', 
-      maxWidth: '800px', 
-      margin: '0 auto' 
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h1 style={{ color: '#2563eb', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <img src="/apple-touch-icon.svg" alt="Porta Gateway" style={{ width: '32px', height: '32px' }} />
-          Porta Gateway
-        </h1>
-        <div style={{ textAlign: 'right', fontSize: '0.9rem', color: '#6b7280' }}>
-          <div><strong>v{APP_VERSION}</strong></div>
-          <div>Build: {BUILD_DATE}</div>
-        </div>
-      </div>
-      
-      <div style={{ 
-        background: '#f8fafc', 
-        border: '1px solid #e2e8f0', 
-        borderRadius: '8px', 
-        padding: '1.5rem',
-        marginBottom: '2rem'
-      }}>
-        <h2 style={{ marginTop: 0 }}>System Status & Testing</h2>
-        
-        <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
-          {/* Status Information */}
-          <div style={{ flex: 1 }}>
-            <h3 style={{ marginTop: 0, fontSize: '1.1rem', color: '#374151' }}>Current Status</h3>
-            <p><strong>Status:</strong> <span style={{ 
-              color: status.includes('healthy') ? '#16a34a' : '#dc2626',
-              fontWeight: 'bold'
-            }}>{status}</span></p>
-            <p><strong>Last Check:</strong> {lastTest}</p>
-            <p><strong>Environment:</strong> {import.meta.env.DEV ? 'Development' : 'Production'}</p>
+    <div className="min-h-screen bg-gray-50 font-sans">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+          <div className="flex items-center space-x-4">
+            <img 
+              src="/apple-touch-icon.svg" 
+              alt="Porta Gateway" 
+              className="w-8 h-8"
+            />
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900 m-0">
+                Porta Gateway
+              </h1>
+              <p className="text-sm text-gray-500 m-0">
+                Authentication & App Management Platform
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            <div className="text-right text-sm text-gray-500">
+              <div className="font-medium">v{APP_VERSION}</div>
+              <div>{BUILD_DATE}</div>
+            </div>
             
-            {/* Emergency Mode Warning */}
-            {systemHealth?.systemHealth?.emergencyModeRecommended && (
-              <div style={{
-                background: '#fee2e2',
-                border: '1px solid #fecaca',
-                borderRadius: '6px',
-                padding: '0.75rem',
-                marginTop: '1rem'
-              }}>
-                <strong style={{ color: '#dc2626' }}>⚠️ Emergency Mode Recommended</strong>
-                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: '#7f1d1d' }}>
-                  System performance degraded. Consider emergency access.
-                </p>
+            {isAdmin && (
+              <div className="flex items-center space-x-2">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  👤 Admin
+                </span>
+                <button
+                  onClick={handleAdminLogout}
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  Logout
+                </button>
               </div>
             )}
           </div>
+        </div>
+        </div>
+      </header>
 
-          {/* Test Buttons */}
-          <div style={{ flex: 2 }}>
-            <h3 style={{ marginTop: 0, fontSize: '1.1rem', color: '#374151' }}>Test Functions</h3>
-            
-            {/* Primary Actions */}
-            <div style={{ marginBottom: '1rem' }}>
-              <h4 style={{ fontSize: '0.9rem', color: '#6b7280', margin: '0 0 0.5rem 0' }}>Authentication</h4>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-                <button 
-                  onClick={testLogin}
-                  style={{
-                    background: '#16a34a',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.5rem 1rem',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  🔑 Test Login
-                </button>
-
-                <button 
-                  onClick={testLogout}
-                  style={{
-                    background: '#ef4444',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.5rem 1rem',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  🚪 Test Logout
-                </button>
-
-                <button 
-                  onClick={checkHealth}
-                  style={{
-                    background: '#3b82f6',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.5rem 1rem',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  🔄 Refresh Status
-                </button>
-              </div>
-            </div>
-
-            {/* Debug/Advanced */}
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* System Status Card */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2 m-0">
+            🏥 System Status
+          </h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
-              <h4 style={{ fontSize: '0.9rem', color: '#6b7280', margin: '0 0 0.5rem 0' }}>Debug & Advanced</h4>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <button 
-                  onClick={testSupabaseDirect}
-                  style={{
-                    background: '#dc2626',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.5rem 1rem',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  🔬 Supabase Direct
-                </button>
-
-                <button 
-                  onClick={testProductionHealth}
-                  style={{
-                    background: '#7c3aed',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.5rem 1rem',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  🏥 Prod Health
-                </button>
-
-                <button 
-                  onClick={testSimpleEndpoint}
-                  style={{
-                    background: '#f59e0b',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.5rem 1rem',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  🧪 Simple API
-                </button>
+              <h3 className="text-sm font-medium text-gray-500 mb-2 m-0">
+                Gateway Status
+              </h3>
+              <div className={`flex items-center space-x-2 text-lg font-medium ${getStatusInfo().colorClass}`}>
+                <span>{getStatusInfo().icon}</span>
+                <span>{status}</span>
               </div>
             </div>
+            
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 mb-2 m-0">
+                Last Checked
+              </h3>
+              <div className="text-sm text-gray-900">
+                {lastCheck ? new Date(lastCheck).toLocaleString() : 'Never'}
+              </div>
+            </div>
+            
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 mb-2 m-0">
+                Environment
+              </h3>
+              <div className="text-sm text-gray-900">
+                {systemHealth?.environment?.hasSupabaseUrl ? '🟢 Connected' : '🔴 Disconnected'}
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-4 pt-4 border-t border-gray-200 flex space-x-4">
+            <button
+              onClick={checkHealth}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              🔄 Refresh Status
+            </button>
+          </div>
+        </div>
 
-            {/* Emergency Access */}
-            <div style={{ marginTop: '1rem' }}>
-              <h4 style={{ fontSize: '0.9rem', color: '#6b7280', margin: '0 0 0.5rem 0' }}>Emergency Access</h4>
-              <button 
-                onClick={toggleEmergencyAccess}
-                style={{
-                  background: '#dc2626',
-                  color: 'white',
-                  border: 'none',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem'
+        {/* Admin Access Cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* Admin Dashboard Card */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center hover:shadow-md transition-shadow">
+            <div className="text-5xl mb-4">🛠️</div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2 m-0">Admin Dashboard</h3>
+            <p className="text-gray-600 text-sm mb-6 m-0">
+              Manage applications, users, and system settings
+            </p>
+            <button
+              onClick={() => window.location.href = '/admin'}
+              className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Access Admin Dashboard
+            </button>
+          </div>
+
+          {/* SU Toolkit Card */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center hover:shadow-md transition-shadow">
+            <div className="text-5xl mb-4">🛠️</div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2 m-0">SU Toolkit</h3>
+            <p className="text-gray-600 text-sm mb-6 m-0">
+              Super User toolkit for system recovery and administration
+            </p>
+            <button
+              onClick={() => setShowEmergencyAccess(true)}
+              className={`w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                systemHealth?.systemHealth?.emergencyModeRecommended 
+                  ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' 
+                  : 'bg-amber-600 hover:bg-amber-700 focus:ring-amber-500'
+              }`}
+            >
+              {systemHealth?.systemHealth?.emergencyModeRecommended ? 'System Alert - Access SU Toolkit' : 'Access SU Toolkit'}
+            </button>
+          </div>
+        </div>
+
+        {/* Admin Tools Section (only if admin is logged in) */}
+        {isAdmin && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mt-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center space-x-2 m-0">
+              🔧 Admin Tools & Testing
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <button
+                onClick={async () => {
+                  try {
+                    const credentials = {
+                      email: 'admin@arca.dev',
+                      password: 'admin123',
+                      app: 'arca',
+                      redirect_url: 'https://arca-alpha.vercel.app',
+                      app_secret: import.meta.env.VITE_ARCA_APP_SECRET
+                    };
+                    
+                    const response = await fetch('/api/auth/login', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(credentials)
+                    });
+                    
+                    const result = await response.json();
+                    if (result.success) {
+                      alert('✅ ARCA login test successful!');
+                    } else {
+                      alert('❌ ARCA login test failed: ' + result.error);
+                    }
+                  } catch (error) {
+                    alert('❌ ARCA login test error: ' + error);
+                  }
                 }}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
               >
-                🚨 Emergency Admin
+                🔑 Test ARCA Login
               </button>
-
-              <button 
-                onClick={() => window.location.href = '/admin'}
-                style={{
-                  background: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem'
+              
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/health');
+                    const result = await response.json();
+                    alert('🏥 Health check result:\n' + JSON.stringify(result, null, 2));
+                  } catch (error) {
+                    alert('❌ Health check error: ' + error);
+                  }
                 }}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-sky-600 hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500"
               >
-                🛠️ Admin Dashboard
+                🏥 Test Health API
+              </button>
+              
+              <button
+                onClick={() => window.open('https://docs.anthropic.com/en/docs/claude-code', '_blank')}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-violet-600 hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500"
+              >
+                📚 API Documentation
               </button>
             </div>
           </div>
-        </div>
-      </div>
+        )}
 
-      <div style={{ 
-        background: '#fefce8', 
-        border: '1px solid #eab308', 
-        borderRadius: '8px', 
-        padding: '1.5rem' 
-      }}>
-        <h3>🔗 API Endpoints</h3>
-        <ul style={{ margin: '1rem 0' }}>
-          <li><code>POST /api/auth/login</code> - Authenticate users</li>
-          <li><code>GET /api/health</code> - Health check</li>
-        </ul>
-        
-        <h3>🎯 Usage</h3>
-        <p>ARCA should POST to:</p>
-        <code style={{ 
-          background: '#1f2937', 
-          color: '#f9fafb', 
-          padding: '0.5rem', 
-          borderRadius: '4px',
-          display: 'block',
-          marginTop: '0.5rem'
-        }}>
-          https://porta-gateway.vercel.app/api/auth/login
-        </code>
-      </div>
+        {/* Footer */}
+        <footer className="mt-12 pt-8 border-t border-gray-200 text-center text-gray-500 text-sm">
+          <p className="m-0">
+            Porta Gateway v{APP_VERSION} • Built {BUILD_DATE}
+          </p>
+        </footer>
+      </main>
     </div>
   );
 }

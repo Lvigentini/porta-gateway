@@ -19,6 +19,18 @@ interface User {
   last_login_at?: string;
 }
 
+interface AppAssignment {
+  app_name: string;
+  app_display_name: string;
+  role_name: string;
+  role_label: string;
+  granted_at: string;
+}
+
+interface UserWithAssignments extends User {
+  app_assignments: AppAssignment[];
+}
+
 interface RegisteredApp {
   id: string;
   app_name: string;
@@ -69,8 +81,15 @@ export function AdminDashboard() {
 
   // User management state
   const [users, setUsers] = useState<User[]>([]);
+  const [usersWithAssignments, setUsersWithAssignments] = useState<UserWithAssignments[]>([]);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<string>('');
+
+  // Roles & ACL state
+  const [rolesView, setRolesView] = useState<'app' | 'user'>('app');
+  const [selectedApp, setSelectedApp] = useState<string>('');
+  const [selectedUser, setSelectedUser] = useState<string>('');
+  const [assignmentRoles, setAssignmentRoles] = useState<{ [key: string]: string }>({});
   
   const [newApp, setNewApp] = useState<AppRegistrationForm>({
     app_name: '',
@@ -140,8 +159,45 @@ export function AdminDashboard() {
         setError(data.error || 'Login failed');
       }
     } catch (error) {
-      setError('Error during login');
       console.error('Login error:', error);
+      
+      // Check if we're in development mode (Vite dev server)
+      const isDev = import.meta.env.DEV;
+      
+      if (isDev) {
+        // Mock successful login for development
+        const mockAdminUser = {
+          id: 'dev-admin',
+          email: loginCredentials.email,
+          name: 'Development Admin',
+          role: 'admin'
+        };
+        const mockToken = btoa(JSON.stringify({
+          adminId: 'dev-admin',
+          email: loginCredentials.email,
+          role: 'admin',
+          exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 hours
+          iss: 'porta-gateway-admin'
+        }));
+        
+        setAdminToken(mockToken);
+        setAdminUser(mockAdminUser);
+        setIsLoggedIn(true);
+        
+        localStorage.setItem('porta_admin_token', mockToken);
+        localStorage.setItem('porta_admin_user', JSON.stringify(mockAdminUser));
+        
+        setSuccess('Development mode: Mock admin login successful');
+        setLoginCredentials({ email: '', password: '' });
+        
+        // Load real data using mock token
+        loadApps(mockToken);
+        loadUsers(mockToken);
+        
+        console.log('Development mode: Mock admin login successful');
+      } else {
+        setError('Error during login');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -197,7 +253,29 @@ export function AdminDashboard() {
       const data = await response.json();
       
       if (data.success) {
-        setUsers(data.users || []);
+        const usersData = data.users || [];
+        
+        // Set clean users for Users tab
+        const cleanUsers = usersData.map((user: any) => ({
+          id: user.id,
+          email: user.email,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          full_name: user.full_name,
+          role: user.role,
+          created_at: user.created_at,
+          updated_at: user.updated_at,
+          last_login_at: user.last_login_at
+        }));
+        
+        // Set users with assignments for Roles & ACL tab
+        const usersWithAssignments = usersData.map((user: any) => ({
+          ...user,
+          app_assignments: user.app_assignments || []
+        }));
+        
+        setUsers(cleanUsers);
+        setUsersWithAssignments(usersWithAssignments);
       } else {
         setError(data.error || 'Failed to load users');
         
@@ -389,6 +467,89 @@ export function AdminDashboard() {
       ...prev,
       roles: prev.roles.filter((_, i) => i !== index)
     }));
+  };
+
+  const assignRole = async (userId: string, appName: string, roleName: string) => {
+    setError('');
+    setSuccess('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/admin/roles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({ 
+          user_id: userId, 
+          app_name: appName, 
+          role_name: roleName 
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccess(data.message);
+        // Reload users to reflect the changes
+        loadUsers();
+      } else {
+        setError(data.error || 'Failed to assign role');
+        
+        if (data.error?.includes('expired')) {
+          handleLogout();
+        }
+      }
+    } catch (error) {
+      setError('Error assigning role');
+      console.error('Assign role error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const revokeRole = async (userId: string, appName: string) => {
+    if (!confirm('Are you sure you want to revoke this user\'s role for this application?')) {
+      return;
+    }
+
+    setError('');
+    setSuccess('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/admin/roles', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({ 
+          user_id: userId, 
+          app_name: appName 
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccess(data.message);
+        // Reload users to reflect the changes
+        loadUsers();
+      } else {
+        setError(data.error || 'Failed to revoke role');
+        
+        if (data.error?.includes('expired')) {
+          handleLogout();
+        }
+      }
+    } catch (error) {
+      setError('Error revoking role');
+      console.error('Revoke role error:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const formatDate = (dateString?: string) => {
@@ -1065,7 +1226,7 @@ export function AdminDashboard() {
                 borderBottom: '1px solid #e5e7eb'
               }}>
                 <div>User</div>
-                <div>Role</div>
+                <div>System Role</div>
                 <div>Created</div>
                 <div>Last Login</div>
                 <div>Status</div>
@@ -1202,16 +1363,538 @@ export function AdminDashboard() {
       )}
 
       {activeTab === 'roles' && (
-        <div style={{
-          background: '#f9fafb',
-          border: '2px dashed #d1d5db',
-          borderRadius: '8px',
-          padding: '3rem',
-          textAlign: 'center',
-          color: '#6b7280'
-        }}>
-          <h3 style={{ margin: '0 0 1rem 0' }}>🔐 Roles & ACL</h3>
-          <p>Role permissions and access control management features coming soon.</p>
+        <div>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            marginBottom: '1.5rem' 
+          }}>
+            <h2 style={{ margin: 0, color: '#1f2937' }}>🔐 Roles & Access Control</h2>
+            
+            {/* View Toggle */}
+            <div style={{
+              display: 'inline-flex',
+              backgroundColor: '#f3f4f6',
+              borderRadius: '8px',
+              padding: '4px'
+            }}>
+              <button
+                onClick={() => setRolesView('app')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  backgroundColor: rolesView === 'app' ? '#3b82f6' : 'transparent',
+                  color: rolesView === 'app' ? 'white' : '#6b7280'
+                }}
+              >
+                📱 App View
+              </button>
+              <button
+                onClick={() => setRolesView('user')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  backgroundColor: rolesView === 'user' ? '#3b82f6' : 'transparent',
+                  color: rolesView === 'user' ? 'white' : '#6b7280'
+                }}
+              >
+                👤 User View
+              </button>
+            </div>
+          </div>
+
+          {/* App View */}
+          {rolesView === 'app' && (
+            <div>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '0.5rem', 
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  color: '#374151'
+                }}>
+                  Select Application:
+                </label>
+                <select
+                  value={selectedApp}
+                  onChange={(e) => setSelectedApp(e.target.value)}
+                  style={{
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    fontSize: '0.875rem',
+                    minWidth: '200px'
+                  }}
+                >
+                  <option value="">Choose an app...</option>
+                  {apps.map(app => (
+                    <option key={app.id} value={app.app_name}>
+                      {app.app_display_name} ({app.app_name})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedApp && (
+                <div>
+                  <h3 style={{ 
+                    margin: '0 0 1rem 0', 
+                    color: '#1f2937',
+                    fontSize: '1.125rem' 
+                  }}>
+                    Users & Roles for {apps.find(app => app.app_name === selectedApp)?.app_display_name}
+                  </h3>
+                  
+                  <div style={{
+                    backgroundColor: '#f9fafb',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: '2fr 1fr 1fr auto',
+                      gap: '1rem',
+                      padding: '1rem',
+                      backgroundColor: '#f3f4f6',
+                      borderBottom: '1px solid #e5e7eb',
+                      fontWeight: '500',
+                      fontSize: '0.875rem',
+                      color: '#374151'
+                    }}>
+                      <div>User</div>
+                      <div>Current Role</div>
+                      <div>Granted</div>
+                      <div>Actions</div>
+                    </div>
+
+                    {usersWithAssignments
+                      .filter(user => user.app_assignments.some(assignment => assignment.app_name === selectedApp))
+                      .map(user => {
+                        const assignment = user.app_assignments.find(a => a.app_name === selectedApp);
+                        return (
+                          <div 
+                            key={user.id}
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '2fr 1fr 1fr auto',
+                              gap: '1rem',
+                              padding: '1rem',
+                              borderBottom: '1px solid #e5e7eb',
+                              fontSize: '0.875rem'
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: '500', color: '#1f2937' }}>
+                                {user.full_name}
+                              </div>
+                              <div style={{ color: '#6b7280', fontSize: '0.8125rem' }}>
+                                {user.email}
+                              </div>
+                            </div>
+                            <div>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '0.25rem 0.5rem',
+                                backgroundColor: assignment?.role_name === 'admin' ? '#dbeafe' : '#fef3c7',
+                                color: assignment?.role_name === 'admin' ? '#1d4ed8' : '#f59e0b',
+                                borderRadius: '4px',
+                                fontSize: '0.75rem',
+                                fontWeight: '500'
+                              }}>
+                                {assignment?.role_label || 'No Role'}
+                              </span>
+                            </div>
+                            <div style={{ color: '#6b7280' }}>
+                              {assignment ? formatDate(assignment.granted_at) : 'N/A'}
+                            </div>
+                            <div>
+                              <button
+                                onClick={() => revokeRole(user.id, selectedApp)}
+                                disabled={isLoading}
+                                style={{
+                                  padding: '0.25rem 0.5rem',
+                                  backgroundColor: isLoading ? '#9ca3af' : '#ef4444',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '0.75rem',
+                                  cursor: isLoading ? 'not-allowed' : 'pointer'
+                                }}
+                              >
+                                {isLoading ? 'Revoking...' : 'Revoke'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    }
+
+                    {/* Users without assignments for this app */}
+                    <div style={{ 
+                      padding: '1rem',
+                      borderTop: '2px solid #e5e7eb',
+                      backgroundColor: '#f9fafb'
+                    }}>
+                      <h4 style={{ 
+                        margin: '0 0 0.75rem 0', 
+                        fontSize: '0.875rem',
+                        fontWeight: '500',
+                        color: '#6b7280'
+                      }}>
+                        Assign New Users:
+                      </h4>
+                      {usersWithAssignments
+                        .filter(user => !user.app_assignments.some(assignment => assignment.app_name === selectedApp))
+                        .slice(0, 3)
+                        .map(user => (
+                          <div 
+                            key={user.id}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '0.5rem',
+                              marginBottom: '0.5rem',
+                              backgroundColor: 'white',
+                              border: '1px solid #e5e7eb',
+                              borderRadius: '6px',
+                              fontSize: '0.875rem'
+                            }}
+                          >
+                            <div>
+                              <span style={{ fontWeight: '500' }}>{user.full_name}</span>
+                              <span style={{ color: '#6b7280', marginLeft: '0.5rem' }}>
+                                ({user.email})
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <select 
+                                value={assignmentRoles[`app-${selectedApp}-user-${user.id}`] || ''}
+                                onChange={(e) => setAssignmentRoles(prev => ({
+                                  ...prev,
+                                  [`app-${selectedApp}-user-${user.id}`]: e.target.value
+                                }))}
+                                style={{
+                                  padding: '0.25rem',
+                                  border: '1px solid #d1d5db',
+                                  borderRadius: '4px',
+                                  fontSize: '0.75rem'
+                                }}
+                              >
+                                <option value="">Select Role</option>
+                                <option value="admin">Administrator</option>
+                                <option value="editor">Editor</option>
+                              </select>
+                              <button
+                                onClick={() => {
+                                  const role = assignmentRoles[`app-${selectedApp}-user-${user.id}`];
+                                  if (role) {
+                                    assignRole(user.id, selectedApp, role);
+                                    // Clear the selection after assignment
+                                    setAssignmentRoles(prev => ({
+                                      ...prev,
+                                      [`app-${selectedApp}-user-${user.id}`]: ''
+                                    }));
+                                  }
+                                }}
+                                disabled={!assignmentRoles[`app-${selectedApp}-user-${user.id}`] || isLoading}
+                                style={{
+                                  padding: '0.25rem 0.5rem',
+                                  backgroundColor: assignmentRoles[`app-${selectedApp}-user-${user.id}`] && !isLoading ? '#10b981' : '#9ca3af',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '0.75rem',
+                                  cursor: assignmentRoles[`app-${selectedApp}-user-${user.id}`] && !isLoading ? 'pointer' : 'not-allowed'
+                                }}
+                              >
+                                {isLoading ? 'Assigning...' : 'Assign'}
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      }
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!selectedApp && (
+                <div style={{
+                  textAlign: 'center',
+                  color: '#6b7280',
+                  padding: '3rem',
+                  border: '2px dashed #d1d5db',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📱</div>
+                  <p style={{ margin: 0, fontSize: '0.875rem' }}>
+                    Select an application to view and manage user roles
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* User View */}
+          {rolesView === 'user' && (
+            <div>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '0.5rem', 
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  color: '#374151'
+                }}>
+                  Select User:
+                </label>
+                <select
+                  value={selectedUser}
+                  onChange={(e) => setSelectedUser(e.target.value)}
+                  style={{
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    fontSize: '0.875rem',
+                    minWidth: '200px'
+                  }}
+                >
+                  <option value="">Choose a user...</option>
+                  {usersWithAssignments.map(user => (
+                    <option key={user.id} value={user.id}>
+                      {user.full_name} ({user.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedUser && (
+                <div>
+                  {(() => {
+                    const user = usersWithAssignments.find(u => u.id === selectedUser);
+                    return user ? (
+                      <div>
+                        <h3 style={{ 
+                          margin: '0 0 1rem 0', 
+                          color: '#1f2937',
+                          fontSize: '1.125rem' 
+                        }}>
+                          App Assignments for {user.full_name}
+                        </h3>
+                        
+                        <div style={{
+                          backgroundColor: '#f9fafb',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '8px',
+                          overflow: 'hidden'
+                        }}>
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: '2fr 1fr 1fr auto',
+                            gap: '1rem',
+                            padding: '1rem',
+                            backgroundColor: '#f3f4f6',
+                            borderBottom: '1px solid #e5e7eb',
+                            fontWeight: '500',
+                            fontSize: '0.875rem',
+                            color: '#374151'
+                          }}>
+                            <div>Application</div>
+                            <div>Role</div>
+                            <div>Granted</div>
+                            <div>Actions</div>
+                          </div>
+
+                          {user.app_assignments.map((assignment, index) => (
+                            <div 
+                              key={index}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: '2fr 1fr 1fr auto',
+                                gap: '1rem',
+                                padding: '1rem',
+                                borderBottom: '1px solid #e5e7eb',
+                                fontSize: '0.875rem'
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontWeight: '500', color: '#1f2937' }}>
+                                  {assignment.app_display_name}
+                                </div>
+                                <div style={{ color: '#6b7280', fontSize: '0.8125rem' }}>
+                                  {assignment.app_name}
+                                </div>
+                              </div>
+                              <div>
+                                <span style={{
+                                  display: 'inline-block',
+                                  padding: '0.25rem 0.5rem',
+                                  backgroundColor: assignment.role_name === 'admin' ? '#dbeafe' : '#fef3c7',
+                                  color: assignment.role_name === 'admin' ? '#1d4ed8' : '#f59e0b',
+                                  borderRadius: '4px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '500'
+                                }}>
+                                  {assignment.role_label}
+                                </span>
+                              </div>
+                              <div style={{ color: '#6b7280' }}>
+                                {formatDate(assignment.granted_at)}
+                              </div>
+                              <div>
+                                <button
+                                  onClick={() => revokeRole(user.id, assignment.app_name)}
+                                  disabled={isLoading}
+                                  style={{
+                                    padding: '0.25rem 0.5rem',
+                                    backgroundColor: isLoading ? '#9ca3af' : '#ef4444',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    fontSize: '0.75rem',
+                                    cursor: isLoading ? 'not-allowed' : 'pointer'
+                                  }}
+                                >
+                                  {isLoading ? 'Revoking...' : 'Revoke'}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+
+                          {user.app_assignments.length === 0 && (
+                            <div style={{
+                              padding: '2rem',
+                              textAlign: 'center',
+                              color: '#6b7280'
+                            }}>
+                              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📋</div>
+                              <p style={{ margin: 0, fontSize: '0.875rem' }}>
+                                This user has no app assignments yet
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Assign new apps to user */}
+                          <div style={{ 
+                            padding: '1rem',
+                            borderTop: '2px solid #e5e7eb',
+                            backgroundColor: '#f9fafb'
+                          }}>
+                            <h4 style={{ 
+                              margin: '0 0 0.75rem 0', 
+                              fontSize: '0.875rem',
+                              fontWeight: '500',
+                              color: '#6b7280'
+                            }}>
+                              Assign to New Apps:
+                            </h4>
+                            {apps
+                              .filter(app => !user.app_assignments.some(assignment => assignment.app_name === app.app_name))
+                              .slice(0, 3)
+                              .map(app => (
+                                <div 
+                                  key={app.id}
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '0.5rem',
+                                    marginBottom: '0.5rem',
+                                    backgroundColor: 'white',
+                                    border: '1px solid #e5e7eb',
+                                    borderRadius: '6px',
+                                    fontSize: '0.875rem'
+                                  }}
+                                >
+                                  <div>
+                                    <span style={{ fontWeight: '500' }}>{app.app_display_name}</span>
+                                    <span style={{ color: '#6b7280', marginLeft: '0.5rem' }}>
+                                      ({app.app_name})
+                                    </span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <select 
+                                      value={assignmentRoles[`user-${selectedUser}-app-${app.app_name}`] || ''}
+                                      onChange={(e) => setAssignmentRoles(prev => ({
+                                        ...prev,
+                                        [`user-${selectedUser}-app-${app.app_name}`]: e.target.value
+                                      }))}
+                                      style={{
+                                        padding: '0.25rem',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '4px',
+                                        fontSize: '0.75rem'
+                                      }}
+                                    >
+                                      <option value="">Select Role</option>
+                                      <option value="admin">Administrator</option>
+                                      <option value="editor">Editor</option>
+                                    </select>
+                                    <button
+                                      onClick={() => {
+                                        const role = assignmentRoles[`user-${selectedUser}-app-${app.app_name}`];
+                                        if (role) {
+                                          assignRole(selectedUser, app.app_name, role);
+                                          // Clear the selection after assignment
+                                          setAssignmentRoles(prev => ({
+                                            ...prev,
+                                            [`user-${selectedUser}-app-${app.app_name}`]: ''
+                                          }));
+                                        }
+                                      }}
+                                      disabled={!assignmentRoles[`user-${selectedUser}-app-${app.app_name}`] || isLoading}
+                                      style={{
+                                        padding: '0.25rem 0.5rem',
+                                        backgroundColor: assignmentRoles[`user-${selectedUser}-app-${app.app_name}`] && !isLoading ? '#10b981' : '#9ca3af',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        fontSize: '0.75rem',
+                                        cursor: assignmentRoles[`user-${selectedUser}-app-${app.app_name}`] && !isLoading ? 'pointer' : 'not-allowed'
+                                      }}
+                                    >
+                                      {isLoading ? 'Assigning...' : 'Assign'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+              )}
+
+              {!selectedUser && (
+                <div style={{
+                  textAlign: 'center',
+                  color: '#6b7280',
+                  padding: '3rem',
+                  border: '2px dashed #d1d5db',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👤</div>
+                  <p style={{ margin: 0, fontSize: '0.875rem' }}>
+                    Select a user to view and manage their app assignments
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
