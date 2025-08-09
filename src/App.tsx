@@ -113,10 +113,7 @@ function App() {
     localStorage.removeItem('porta_admin_user');
   };
 
-  // Show admin dashboard if on /admin route
-  if (showAdminDashboard) {
-    return <AdminDashboard />;
-  }
+  // Note: Do not early-return for /admin so we preserve global layout.
 
   // Show emergency access interface if requested
   if (showEmergencyAccess) {
@@ -177,8 +174,13 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* System Status Card */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+        {showAdminDashboard ? (
+          // Admin route content
+          <AdminDashboard />
+        ) : (
+          <>
+          {/* System Status Card */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2 m-0">
             🏥 System Status
           </h2>
@@ -331,6 +333,8 @@ function App() {
             Porta Gateway v{APP_VERSION} • Built {BUILD_DATE}
           </p>
         </footer>
+          </>
+        )}
       </main>
     </div>
   );

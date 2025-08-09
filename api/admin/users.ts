@@ -16,12 +16,13 @@ interface AdminSession {
 function createSupabaseClient() {
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
   const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
-  
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Supabase configuration missing');
   }
-  
-  return { supabaseUrl, supabaseAnonKey };
+
+  return { supabaseUrl, supabaseAnonKey, supabaseServiceKey };
 }
 
 function validateAdminAccess(req: VercelRequest): { isValid: boolean; admin?: AdminSession; error?: string } {
@@ -70,6 +71,109 @@ function validateAdminAccess(req: VercelRequest): { isValid: boolean; admin?: Ad
   }
 }
 
+async function handleDeleteUser(
+  req: VercelRequest,
+  res: VercelResponse,
+  supabaseUrl: string,
+  supabaseAnonOrServiceKey: string,
+  admin: AdminSession
+) {
+  try {
+    const { user_id } = req.query;
+
+    if (!user_id || typeof user_id !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required in query parameters'
+      });
+    }
+
+    // Prevent deleting your own admin account by mistake
+    if (user_id === admin.adminId) {
+      return res.status(400).json({
+        success: false,
+        error: 'You cannot delete your own admin account'
+      });
+    }
+
+    // We require service role key for admin operations
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonOrServiceKey;
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(500).json({
+        success: false,
+        error: 'Server not configured with SUPABASE_SERVICE_ROLE_KEY'
+      });
+    }
+
+    // 1) Delete app role assignments (if any)
+    const delRolesResp = await fetch(`${supabaseUrl}/rest/v1/user_app_roles?user_id=eq.${user_id}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!delRolesResp.ok && delRolesResp.status !== 404) {
+      const txt = await delRolesResp.text();
+      console.warn('[Users API] Failed to delete user_app_roles:', delRolesResp.status, txt);
+    }
+
+    // 2) Delete profile row from public.users
+    const delProfileResp = await fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user_id}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!delProfileResp.ok && delProfileResp.status !== 404) {
+      const txt = await delProfileResp.text();
+      console.error('[Users API] Failed to delete profile row:', delProfileResp.status, txt);
+      return res.status(500).json({ success: false, error: 'Failed to delete user profile' });
+    }
+
+    // 3) Delete Supabase Auth user
+    const delAuthResp = await fetch(`${supabaseUrl}/auth/v1/admin/users/${user_id}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!delAuthResp.ok && delAuthResp.status !== 404) {
+      const detail = await delAuthResp.text();
+      console.error('[Users API] Supabase Auth delete failed:', delAuthResp.status, detail);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to delete auth user',
+        detail: { code: delAuthResp.status, msg: detail }
+      });
+    }
+
+    console.log('[Users API] User deleted:', {
+      timestamp: new Date().toISOString(),
+      admin_id: admin.adminId,
+      admin_email: admin.email,
+      user_id
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'User deleted successfully',
+      user_id
+    });
+  } catch (error) {
+    console.error('[Users API] Delete user error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete user' });
+  }
+}
+
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse
@@ -94,21 +198,32 @@ export default async function handler(
   }
 
   try {
-    const { supabaseUrl, supabaseAnonKey } = createSupabaseClient();
+    const { supabaseUrl, supabaseAnonKey, supabaseServiceKey } = createSupabaseClient();
+    console.log('[Users API] Using Supabase config:', {
+      hasUrl: !!supabaseUrl,
+      hasKey: !!supabaseAnonKey,
+      hasServiceKey: !!supabaseServiceKey,
+      method: req.method
+    });
 
     if (req.method === 'GET') {
       // Get all users
-      return await handleGetUsers(res, supabaseUrl, supabaseAnonKey);
+      return await handleGetUsers(res, supabaseUrl, supabaseServiceKey || supabaseAnonKey);
     }
 
     if (req.method === 'POST') {
       // Create new user
-      return await handleCreateUser(req, res, supabaseUrl, supabaseAnonKey, adminValidation.admin!);
+      return await handleCreateUser(req, res, supabaseUrl, supabaseServiceKey || supabaseAnonKey, adminValidation.admin!);
     }
 
     if (req.method === 'PUT') {
       // Update user role
-      return await handleUpdateUser(req, res, supabaseUrl, supabaseAnonKey, adminValidation.admin!);
+      return await handleUpdateUser(req, res, supabaseUrl, supabaseServiceKey || supabaseAnonKey, adminValidation.admin!);
+    }
+
+    if (req.method === 'DELETE') {
+      // Delete user
+      return await handleDeleteUser(req, res, supabaseUrl, supabaseServiceKey || supabaseAnonKey, adminValidation.admin!);
     }
 
     return res.status(405).json({ 
@@ -186,7 +301,7 @@ async function handleGetUsers(
       full_name: user.first_name && user.last_name 
         ? `${user.first_name} ${user.last_name}` 
         : user.email,
-      role: user.role || 'user',
+      role: user.role || 'viewer',
       created_at: user.created_at,
       updated_at: user.updated_at,
       last_login_at: user.last_login_at,
@@ -234,7 +349,7 @@ async function handleUpdateUser(
     }
 
     // Validate role values
-    const validRoles = ['admin', 'user', 'viewer', 'editor'];
+    const validRoles = ['admin', 'viewer', 'editor', 'reviewer'];
     if (!validRoles.includes(role)) {
       return res.status(400).json({
         success: false,
@@ -348,8 +463,8 @@ async function handleCreateUser(
       });
     }
 
-    // Validate role
-    const validRoles = ['admin', 'user', 'viewer', 'editor'];
+    // Validate role (align with Supabase enum: admin, editor, reviewer, viewer)
+    const validRoles = ['admin', 'viewer', 'editor', 'reviewer'];
     if (role && !validRoles.includes(role)) {
       return res.status(400).json({
         success: false,
@@ -377,15 +492,59 @@ async function handleCreateUser(
       }
     }
 
+    // 1) Create Supabase Auth user first (requires service role key)
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(500).json({
+        success: false,
+        error: 'Server not configured with SUPABASE_SERVICE_ROLE_KEY'
+      });
+    }
+
+    const authCreateResp = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+      method: 'POST',
+      headers: {
+        'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY,
+        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email,
+        email_confirm: true,
+        user_metadata: {
+          first_name: first_name || '',
+          last_name: last_name || ''
+        }
+      })
+    });
+
+    if (!authCreateResp.ok) {
+      const authErr = await authCreateResp.text();
+      let detail: any = undefined;
+      try { detail = JSON.parse(authErr); } catch {}
+      console.error('[Users API] Supabase Auth admin create error', { status: authCreateResp.status, authErr });
+      return res.status(authCreateResp.status).json({ success: false, error: 'Supabase Auth create failed', detail });
+    }
+
+    const authUserPayload = await authCreateResp.json();
+    const authUserId = authUserPayload?.user?.id || authUserPayload?.id;
+    if (!authUserId) {
+      console.error('[Users API] Missing auth user id from Supabase response', authUserPayload);
+      return res.status(500).json({ success: false, error: 'Auth user creation did not return an id' });
+    }
+
+    // 2) Insert into public.users with the same id
     const newUserData = {
+      id: authUserId,
       email,
       first_name: first_name || '',
       last_name: last_name || '',
-      role: role || 'user',
+      role: role || 'viewer',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
 
+    console.log('[Users API] Creating user with data:', newUserData);
+    
     const createResponse = await fetch(`${supabaseUrl}/rest/v1/users`, {
       method: 'POST',
       headers: {
@@ -398,7 +557,21 @@ async function handleCreateUser(
     });
 
     if (!createResponse.ok) {
-      throw new Error(`Supabase error: ${createResponse.status}`);
+      const errorText = await createResponse.text();
+      console.error('[Users API] Supabase create user error:', {
+        status: createResponse.status,
+        statusText: createResponse.statusText,
+        errorText: errorText,
+        userData: newUserData
+      });
+      // Try to parse PostgREST error
+      let detail: any = undefined;
+      try { detail = JSON.parse(errorText); } catch {}
+      return res.status(createResponse.status).json({
+        success: false,
+        error: 'Supabase create user failed',
+        detail
+      });
     }
 
     const userData = await createResponse.json();
@@ -415,7 +588,7 @@ async function handleCreateUser(
           email,
           first_name: first_name || '',
           last_name: last_name || '',
-          role: role || 'user'
+          role: role || 'viewer'
         });
         console.log('[Users API] Welcome email sent successfully:', email);
       } catch (emailError) {
@@ -435,7 +608,7 @@ async function handleCreateUser(
       admin_email: admin.email,
       created_user_id: createdUser.id,
       created_user_email: email,
-      role: role || 'user',
+      role: role || 'viewer',
       welcome_email_sent: send_welcome_email,
       action: 'user_create'
     });

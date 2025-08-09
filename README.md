@@ -52,6 +52,8 @@ VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 VITE_JWT_SECRET=your_jwt_secret_for_token_generation
 SENDGRID_API_KEY=your_sendgrid_api_key_here
+# Server-side only: used by serverless API routes for writes (not exposed to client)
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
 
 ### Vercel Environment Variables
@@ -63,6 +65,7 @@ For production deployment, set these in your Vercel project settings:
 - `VITE_SUPABASE_ANON_KEY`: Your Supabase anonymous key
 - `VITE_JWT_SECRET`: Secret for JWT token generation
 - `SENDGRID_API_KEY`: SendGrid API key for email functionality (messaging system)
+- `SUPABASE_SERVICE_ROLE_KEY`: Service role key used by admin/server APIs to bypass RLS for permitted writes
 
 ## How We Got This Working
 

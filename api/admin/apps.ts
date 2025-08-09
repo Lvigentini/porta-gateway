@@ -18,6 +18,62 @@ interface RegisteredApp {
   metadata: Record<string, any>;
 }
 
+async function handleRotateSecret(
+  req: VercelRequest,
+  res: VercelResponse,
+  supabaseUrl: string,
+  supabaseAnonKey: string
+) {
+  try {
+    const { app_name } = req.query;
+    if (!app_name || typeof app_name !== 'string') {
+      return res.status(400).json({ success: false, error: 'app_name is required in query parameters' });
+    }
+
+    const newSecret = generateAppSecret();
+    const newExpiry = getSecretExpiryDate();
+
+    const response = await fetch(`${supabaseUrl}/rest/v1/registered_apps?app_name=eq.${app_name}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify({
+        app_secret: newSecret,
+        secret_expires_at: newExpiry,
+        updated_at: new Date().toISOString()
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Supabase error: ${response.status} - ${errText}`);
+    }
+
+    const data = await response.json();
+    const updatedApp = Array.isArray(data) ? data[0] : data;
+
+    if (!updatedApp) {
+      return res.status(404).json({ success: false, error: 'App not found' });
+    }
+
+    // Hide the new secret in response for safety
+    updatedApp.app_secret = '[HIDDEN]';
+
+    return res.status(200).json({
+      success: true,
+      app: updatedApp,
+      message: `App '${app_name}' secret rotated successfully`
+    });
+  } catch (error) {
+    console.error('[Apps API] Rotate secret error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to rotate app secret' });
+  }
+}
+
 interface AppRegistrationRequest {
   app_name: string;
   app_display_name: string;
@@ -150,6 +206,11 @@ export default async function handler(
     }
 
     if (req.method === 'POST') {
+      // Support action-based POSTs
+      const action = (req.query.action as string) || '';
+      if (action === 'rotate') {
+        return await handleRotateSecret(req, res, supabaseUrl, supabaseAnonKey);
+      }
       // Register new app
       return await handleCreateApp(req, res, supabaseUrl, supabaseAnonKey);
     }
