@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import AdminLogin from './AdminLogin';
 import UsersTab from './admin/tabs/UsersTab';
 import MessagingTab from './admin/tabs/MessagingTab';
 import RolesUserView from './admin/tabs/RolesUserView';
@@ -32,9 +33,9 @@ interface RegisteredApp {
 // Messaging UI is moved into `MessagingTab`
 
 export function AdminDashboard() {
-  const [, setAdminUser] = useState<AdminUser | null>(null);
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [adminToken, setAdminToken] = useState<string>('');
-  const [, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState<'apps' | 'users' | 'roles' | 'messaging'>('apps');
 
   // Login state
@@ -94,6 +95,18 @@ export function AdminDashboard() {
       }
     }
   }, []);
+
+  // Handle successful login from AdminLogin component
+  const handleLoggedIn = async ({ token, admin }: { token: string; admin: AdminUser }) => {
+    setAdminToken(token);
+    setAdminUser(admin);
+    setIsLoggedIn(true);
+    // Ensure persisted as well (AdminLogin already does, but keep consistent)
+    localStorage.setItem('porta_admin_token', token);
+    localStorage.setItem('porta_admin_user', JSON.stringify(admin));
+    await loadApps(token);
+    await loadUsers(token);
+  };
 
   const handleLogout = () => {
     setIsLoggedIn(false);
@@ -297,6 +310,14 @@ export function AdminDashboard() {
   };
 
   // Render
+  if (!isLoggedIn || !adminToken || !adminUser) {
+    return (
+      <div>
+        <AdminLogin onLoggedIn={handleLoggedIn} />
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Tabs Header */}
