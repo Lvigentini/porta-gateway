@@ -166,7 +166,7 @@ const MessagingTab: React.FC = () => {
         },
         body: JSON.stringify({
           to: testEmail,
-          templateId: selectedTemplate.id,
+          template_id: selectedTemplate.id,
           subject,
           html: htmlContent,
           text: textContent,

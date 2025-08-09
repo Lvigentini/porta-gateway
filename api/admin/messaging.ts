@@ -295,13 +295,15 @@ async function handleSendEmail(
       });
     }
 
-    const { 
-      to, 
-      template_id, 
-      variables = {}, 
+    const body = req.body || {};
+    const {
+      to,
+      variables = {},
       from_name = 'Porta Gateway',
-      from_email = process.env.SENDGRID_FROM_EMAIL || 'l.vigentini@gmail.com' 
-    } = req.body;
+      from_email = process.env.SENDGRID_FROM_EMAIL || 'l.vigentini@gmail.com'
+    } = body;
+    // Accept both snake_case and camelCase for template id
+    const template_id = body.template_id || body.templateId;
 
     if (!to || !template_id) {
       return res.status(400).json({
