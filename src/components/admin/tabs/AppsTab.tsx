@@ -23,10 +23,11 @@ interface AppsTabProps {
     app_display_name: string;
     allowed_origins: string[];
     redirect_urls: string[];
-  }) => Promise<void> | void;
+  }) => Promise<boolean> | boolean;
+  onCopySecret: (appName: string) => Promise<string | null> | string | null;
 }
 
-const AppsTab: React.FC<AppsTabProps> = ({ apps, isLoading, formatDate, rotateAppSecret, onCreateApp }) => {
+const AppsTab: React.FC<AppsTabProps> = ({ apps, isLoading, formatDate, rotateAppSecret, onCreateApp, onCopySecret }) => {
   const [showAddApp, setShowAddApp] = useState(false);
   const [newAppName, setNewAppName] = useState('');
   const [newAppDisplayName, setNewAppDisplayName] = useState('');
@@ -34,18 +35,33 @@ const AppsTab: React.FC<AppsTabProps> = ({ apps, isLoading, formatDate, rotateAp
   const [newRedirectUrls, setNewRedirectUrls] = useState('');
 
   const handleCreate = async () => {
+    // Basic validation
+    const name = newAppName.trim();
+    const display = newAppDisplayName.trim();
+    const origins = newAllowedOrigins.split(',').map(s => s.trim()).filter(Boolean);
+    const redirects = newRedirectUrls.split(',').map(s => s.trim()).filter(Boolean);
+    if (!name || !display || origins.length === 0 || redirects.length === 0) {
+      alert('Please fill App Name, Display Name, Allowed Origins, and Redirect URLs.');
+      return;
+    }
+    if (!/^[a-z0-9_-]+$/.test(name)) {
+      alert('App Name must be lowercase letters, numbers, underscores, or hyphens.');
+      return;
+    }
     const payload = {
-      app_name: newAppName.trim(),
-      app_display_name: newAppDisplayName.trim(),
-      allowed_origins: newAllowedOrigins.split(',').map(s => s.trim()).filter(Boolean),
-      redirect_urls: newRedirectUrls.split(',').map(s => s.trim()).filter(Boolean)
+      app_name: name,
+      app_display_name: display,
+      allowed_origins: origins,
+      redirect_urls: redirects
     };
-    await onCreateApp(payload);
-    setShowAddApp(false);
-    setNewAppName('');
-    setNewAppDisplayName('');
-    setNewAllowedOrigins('');
-    setNewRedirectUrls('');
+    const ok = await onCreateApp(payload);
+    if (ok) {
+      setShowAddApp(false);
+      setNewAppName('');
+      setNewAppDisplayName('');
+      setNewAllowedOrigins('');
+      setNewRedirectUrls('');
+    }
   };
 
   return (
@@ -147,6 +163,22 @@ const AppsTab: React.FC<AppsTabProps> = ({ apps, isLoading, formatDate, rotateAp
                 disabled={isLoading}
                 style={{ padding: '0.25rem 0.5rem', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
               >Rotate Secret</button>
+              <button
+                onClick={async () => {
+                  const secret = await onCopySecret(app.app_name);
+                  if (secret) {
+                    try {
+                      await navigator.clipboard.writeText(secret);
+                      alert('App secret copied to clipboard');
+                    } catch {
+                      // Fallback
+                      prompt('Copy the app secret:', secret);
+                    }
+                  }
+                }}
+                disabled={isLoading}
+                style={{ padding: '0.25rem 0.5rem', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+              >Copy Secret</button>
             </div>
           </div>
         ))}

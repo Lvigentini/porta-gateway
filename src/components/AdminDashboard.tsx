@@ -185,7 +185,7 @@ export function AdminDashboard() {
     app_display_name: string;
     allowed_origins: string[];
     redirect_urls: string[];
-  }) => {
+  }): Promise<boolean> => {
     setError('');
     setSuccess('');
     setIsLoading(true);
@@ -199,15 +199,37 @@ export function AdminDashboard() {
       if (data.success) {
         setSuccess('App created successfully');
         await loadApps();
+        return true;
       } else {
         setError(data.error || 'Failed to create app');
         if (data.error?.includes('expired')) handleLogout();
+        return false;
       }
     } catch (err) {
       setError('Error creating app');
       console.error('Create app error:', err);
+      return false;
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Securely fetch app secret (service side)
+  const getAppSecret = async (appName: string): Promise<string | null> => {
+    try {
+      const resp = await fetch(`/api/admin/apps?action=get_secret&app_name=${encodeURIComponent(appName)}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${adminToken}` }
+      });
+      const data = await resp.json();
+      if (data.success && data.app_secret) return data.app_secret as string;
+      setError(data.error || 'Failed to retrieve app secret');
+      if (data.error?.includes('expired')) handleLogout();
+      return null;
+    } catch (e) {
+      console.error('Get app secret error:', e);
+      setError('Error retrieving app secret');
+      return null;
     }
   };
 
@@ -357,6 +379,7 @@ export function AdminDashboard() {
           formatDate={formatDate}
           rotateAppSecret={rotateAppSecret}
           onCreateApp={createApp}
+          onCopySecret={getAppSecret}
         />
       )}
 

@@ -18,6 +18,51 @@ interface RegisteredApp {
   metadata: Record<string, any>;
 }
 
+async function handleGetSecret(
+  req: VercelRequest,
+  res: VercelResponse,
+  supabaseUrl: string,
+  supabaseAuthKey: string
+) {
+  try {
+    const { app_name } = req.query;
+    if (!app_name || typeof app_name !== 'string') {
+      return res.status(400).json({ success: false, error: 'app_name is required in query parameters' });
+    }
+
+    const url = `${supabaseUrl}/rest/v1/registered_apps?app_name=eq.${encodeURIComponent(app_name)}&select=app_secret,secret_expires_at,updated_at&limit=1`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'apikey': supabaseAuthKey,
+        'Authorization': `Bearer ${supabaseAuthKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      return res.status(500).json({ success: false, error: `Supabase error: ${response.status} - ${errText}` });
+    }
+
+    const data = await response.json();
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) {
+      return res.status(404).json({ success: false, error: 'App not found' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      app_secret: row.app_secret,
+      secret_expires_at: row.secret_expires_at,
+      updated_at: row.updated_at
+    });
+  } catch (error) {
+    console.error('[Apps API] Get secret error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to retrieve app secret' });
+  }
+}
+
 async function handleRotateSecret(
   req: VercelRequest,
   res: VercelResponse,
@@ -87,12 +132,13 @@ interface AppRegistrationRequest {
 function createSupabaseClient() {
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
   const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Supabase configuration missing');
   }
   
-  return { supabaseUrl, supabaseAnonKey };
+  return { supabaseUrl, supabaseAnonKey, supabaseServiceKey };
 }
 
 // Generate secure app secret
@@ -198,7 +244,7 @@ export default async function handler(
   }
 
   try {
-    const { supabaseUrl, supabaseAnonKey } = createSupabaseClient();
+    const { supabaseUrl, supabaseAnonKey, supabaseServiceKey } = createSupabaseClient();
 
     if (req.method === 'GET') {
       // Get all registered apps
@@ -209,10 +255,13 @@ export default async function handler(
       // Support action-based POSTs
       const action = (req.query.action as string) || '';
       if (action === 'rotate') {
-        return await handleRotateSecret(req, res, supabaseUrl, supabaseAnonKey);
+        return await handleRotateSecret(req, res, supabaseUrl, supabaseServiceKey || supabaseAnonKey);
+      }
+      if (action === 'get_secret') {
+        return await handleGetSecret(req, res, supabaseUrl, supabaseServiceKey || supabaseAnonKey);
       }
       // Register new app
-      return await handleCreateApp(req, res, supabaseUrl, supabaseAnonKey);
+      return await handleCreateApp(req, res, supabaseUrl, supabaseServiceKey || supabaseAnonKey);
     }
 
     if (req.method === 'PUT') {
@@ -286,7 +335,7 @@ async function handleCreateApp(
   req: VercelRequest,
   res: VercelResponse,
   supabaseUrl: string,
-  supabaseAnonKey: string
+  supabaseAuthKey: string
 ) {
   try {
     const { app_name, app_display_name, allowed_origins, redirect_urls, permissions, metadata } = req.body as AppRegistrationRequest;
@@ -328,8 +377,8 @@ async function handleCreateApp(
     const response = await fetch(`${supabaseUrl}/rest/v1/registered_apps`, {
       method: 'POST',
       headers: {
-        'apikey': supabaseAnonKey,
-        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'apikey': supabaseAuthKey,
+        'Authorization': `Bearer ${supabaseAuthKey}`,
         'Content-Type': 'application/json',
         'Prefer': 'return=representation'
       },
@@ -337,8 +386,17 @@ async function handleCreateApp(
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Supabase error: ${response.status} - ${error}`);
+      const errorText = await response.text();
+      const status = response.status;
+      const payload = {
+        success: false,
+        error: `Supabase error: ${status} - ${errorText}`
+      };
+      // forward 4xx as 400 to surface validation errors to client
+      if (status >= 400 && status < 500) {
+        return res.status(400).json(payload);
+      }
+      return res.status(500).json(payload);
     }
 
     const data = await response.json();
@@ -354,15 +412,6 @@ async function handleCreateApp(
 
   } catch (error) {
     console.error('[Apps API] Create app error:', error);
-    
-    // Check for unique constraint violation
-    if (error instanceof Error && error.message.includes('duplicate key')) {
-      return res.status(409).json({
-        success: false,
-        error: 'App name already exists'
-      });
-    }
-
     return res.status(500).json({
       success: false,
       error: 'Failed to register app'
