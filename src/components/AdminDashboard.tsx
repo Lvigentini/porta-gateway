@@ -108,6 +108,33 @@ export function AdminDashboard() {
     await loadUsers(token);
   };
 
+  // Password reset handler
+  const handleResetPassword = async (userId: string, email?: string) => {
+    if (!confirm(`Send password reset ${email ? `to ${email}` : ''}?`)) return;
+    setError('');
+    setSuccess('');
+    setIsLoading(true);
+    try {
+      const resp = await fetch('/api/admin/users?action=reset_password', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, email })
+      });
+      const data = await resp.json();
+      if (data.success) {
+        setSuccess(data.message || 'Password reset email sent');
+      } else {
+        setError(data.error || 'Failed to reset password');
+        if (data.error?.includes('expired')) handleLogout();
+      }
+    } catch (err) {
+      setError('Error resetting password');
+      console.error('Reset password error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     setIsLoggedIn(false);
     setAdminUser(null);
@@ -347,6 +374,7 @@ export function AdminDashboard() {
             onChangeRole={setEditingRole}
             onConfirmRole={handleUpdateUserRole}
             onDelete={handleDeleteUser}
+            onResetPassword={(userId, email) => handleResetPassword(userId, email)}
           />
         </div>
       )}

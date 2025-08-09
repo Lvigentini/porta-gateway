@@ -20,6 +20,7 @@ interface UsersListProps {
   onChangeRole: (role: string) => void;
   onConfirmRole: (userId: string, role: string) => void;
   onDelete: (userId: string) => void;
+  onResetPassword: (userId: string, email?: string) => void;
 }
 
 const UsersList: React.FC<UsersListProps> = ({
@@ -33,6 +34,7 @@ const UsersList: React.FC<UsersListProps> = ({
   onChangeRole,
   onConfirmRole,
   onDelete,
+  onResetPassword,
 }) => {
   return (
     <div>
@@ -176,6 +178,23 @@ const UsersList: React.FC<UsersListProps> = ({
                   }}
                 >
                   ✏️ Edit
+                </button>
+                <button
+                  onClick={() => onResetPassword(user.id, user.email)}
+                  disabled={isLoading}
+                  style={{
+                    marginLeft: '0.5rem',
+                    backgroundColor: '#f59e0b',
+                    color: 'white',
+                    padding: '0.25rem 0.5rem',
+                    borderRadius: '4px',
+                    border: 'none',
+                    fontSize: '0.75rem',
+                    cursor: isLoading ? 'not-allowed' : 'pointer',
+                    opacity: isLoading ? 0.5 : 1,
+                  }}
+                >
+                  🔑 Reset PW
                 </button>
                 <button
                   onClick={() => onDelete(user.id)}

@@ -21,6 +21,7 @@ export interface UsersTabProps {
   onChangeRole: (role: string) => void;
   onConfirmRole: (userId: string, newRole: string) => void;
   onDelete: (userId: string) => void;
+  onResetPassword: (userId: string, email?: string) => void;
 }
 
 export default function UsersTab(props: UsersTabProps) {
@@ -35,6 +36,7 @@ export default function UsersTab(props: UsersTabProps) {
     onChangeRole,
     onConfirmRole,
     onDelete,
+    onResetPassword,
   } = props;
 
   return (
@@ -50,6 +52,7 @@ export default function UsersTab(props: UsersTabProps) {
         onChangeRole={onChangeRole}
         onConfirmRole={onConfirmRole}
         onDelete={onDelete}
+        onResetPassword={onResetPassword}
       />
     </div>
   );

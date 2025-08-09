@@ -71,6 +71,109 @@ function validateAdminAccess(req: VercelRequest): { isValid: boolean; admin?: Ad
   }
 }
 
+async function handleResetPassword(
+  req: VercelRequest,
+  res: VercelResponse,
+  supabaseUrl: string,
+  admin: AdminSession
+) {
+  try {
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceKey) {
+      return res.status(500).json({ success: false, error: 'Server not configured with SUPABASE_SERVICE_ROLE_KEY' });
+    }
+
+    const { user_id, email } = (req.body || {}) as { user_id?: string; email?: string };
+    if (!user_id && !email) {
+      return res.status(400).json({ success: false, error: 'Provide user_id or email' });
+    }
+
+    let targetEmail = email || '';
+    if (!targetEmail && user_id) {
+      // Lookup email by user_id
+      const resp = await fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user_id}&select=email,first_name,last_name`, {
+        headers: {
+          'apikey': serviceKey,
+          'Authorization': `Bearer ${serviceKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!resp.ok) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+      const rows = await resp.json();
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+      targetEmail = rows[0].email;
+    }
+
+    // Generate recovery link via Supabase Admin API
+    const genResp = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
+      method: 'POST',
+      headers: {
+        'apikey': serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ type: 'recovery', email: targetEmail })
+    });
+
+    if (!genResp.ok) {
+      const txt = await genResp.text();
+      console.error('[Users API] generate_link failed', genResp.status, txt);
+      return res.status(genResp.status).json({ success: false, error: 'Failed to generate recovery link' });
+    }
+
+    const genData = await genResp.json();
+    const actionLink = genData?.action_link || genData?.properties?.action_link;
+    if (!actionLink) {
+      return res.status(500).json({ success: false, error: 'Recovery link missing in response' });
+    }
+
+    // Send email via SendGrid if configured; otherwise, return the link
+    if (process.env.SENDGRID_API_KEY) {
+      const sendResp = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: targetEmail }] }],
+          from: {
+            email: process.env.SENDGRID_FROM_EMAIL || 'noreply@portagateway.io',
+            name: 'Porta Gateway'
+          },
+          subject: 'Reset your Porta Gateway password',
+          content: [
+            { type: 'text/plain', value: `Click this link to reset your password: ${actionLink}` },
+            { type: 'text/html', value: `<p>Click this link to reset your password:</p><p><a href="${actionLink}">${actionLink}</a></p>` }
+          ],
+          categories: ['password_reset', 'porta-gateway']
+        })
+      });
+
+      if (!sendResp.ok) {
+        const t = await sendResp.text();
+        console.error('[Users API] SendGrid reset email failed', sendResp.status, t);
+        // Still return the link to allow manual delivery
+        return res.status(200).json({ success: true, message: 'Recovery link generated (email failed to send)', recovery_link: actionLink });
+      }
+
+      console.log('[Users API] Password reset email sent:', { email: targetEmail, admin_id: admin.adminId });
+      return res.status(200).json({ success: true, message: 'Password reset email sent' });
+    }
+
+    // Fallback: return link
+    return res.status(200).json({ success: true, recovery_link: actionLink, message: 'Recovery link generated' });
+
+  } catch (error) {
+    console.error('[Users API] Reset password error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to reset password' });
+  }
+}
+
 async function handleDeleteUser(
   req: VercelRequest,
   res: VercelResponse,
@@ -212,6 +315,10 @@ export default async function handler(
     }
 
     if (req.method === 'POST') {
+      const { action } = req.query as { action?: string };
+      if (action === 'reset_password') {
+        return await handleResetPassword(req, res, supabaseUrl, adminValidation.admin!);
+      }
       // Create new user
       return await handleCreateUser(req, res, supabaseUrl, supabaseServiceKey || supabaseAnonKey, adminValidation.admin!);
     }
@@ -548,8 +655,9 @@ async function handleCreateUser(
     const createResponse = await fetch(`${supabaseUrl}/rest/v1/users`, {
       method: 'POST',
       headers: {
-        'apikey': supabaseAnonKey,
-        'Authorization': `Bearer ${supabaseAnonKey}`,
+        // Use service role for elevated insert to bypass RLS
+        'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
         'Content-Type': 'application/json',
         'Prefer': 'return=representation'
       },
